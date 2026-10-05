@@ -1,14 +1,14 @@
 [project]
-name = "aieng-template-uv"
-version = "0.1.1"
+name = "preempt-guardrail"
+version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [ {name = "Vector AI Engineering", email = "ai_engineering@vectorinstitute.ai"}]
 license = "Apache-2.0"
-repository = "https://github.com/VectorInstitute/aieng-template-uv"
+repository = "https://github.com/VectorInstitute/preempt-guardrail"
 requires-python = ">=3.12"
 dependencies = [
-    "filelock==4.0.5",
+    "filelock==4.0.5",  
     "requests>=2.33.0", # Pinning version to address vulnerability CVE-2026-25645
     "urllib3==2.8.0",
     "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
@@ -17,6 +17,9 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/preempt"]
 
 [dependency-groups]
 dev = [
@@ -46,6 +49,18 @@ docs = [
     "tornado>=6.5.6", # Pinning version to address vulnerability CVE-2026-49854
 ]
 
+train = [
+    "datasets>=3.2.0",
+    "names>=0.3.0",
+    "names-dataset>=3.3.1",
+    "protobuf>=5.29.4",
+    "pyfpe>=0.10.3",
+    "sentencepiece>=0.2.0",
+    "torch>=2.6.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.51.3",
+]
+
 # Default dependency groups to be installed
 [tool.uv]
 default-groups = ["dev", "docs"]
@@ -72,6 +87,10 @@ implicit_reexport = false
 strict_equality = true
 extra_checks = true
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["datasets", "datasets.*", "torch", "torch.*", "transformers", "transformers.*", "tqdm", "tqdm.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 include = ["*.py", "pyproject.toml", "*.ipynb"]

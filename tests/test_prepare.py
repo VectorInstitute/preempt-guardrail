@@ -4,7 +4,7 @@ from collections import Counter
 
 import pytest
 
-from training.prepare import entities_from_mask, mask_dicts, split_name
+from training.prepare import entities_from_mask, mask_dicts, normalize_span, split_name
 
 
 def test_list_mask_maps_firstname_and_keeps_the_slice() -> None:
@@ -80,6 +80,29 @@ def test_split_is_stable() -> None:
     """The same example id always lands in the same split."""
     assert split_name(165761, 0) == split_name(165761, 0)
     assert split_name(165761, 0) in {"train", "validation", "test"}
+
+
+@pytest.mark.parametrize(
+    ("text", "needle", "label", "expected"),
+    [
+        ("Hey, you are 73 years old.", "73 years", "AGE", "73"),
+        ("a 17 years old Female", "17 years old", "AGE", "17"),
+        ("aged 93 years", "93", "AGE", "93"),
+        ("contribution of ₪128.7195k will", ".7195k", "MONEY", "128.7195k"),
+        ("budget is $U286.543k. The", "86.543k", "MONEY", "286.543k"),
+        ("was £144,910.66.", "44,910.66", "MONEY", "144,910.66"),
+        ("of ₺418,438.93 will", ",438.93", "MONEY", "418,438.93"),
+        ("credit of 419534.68Rp as", "419534.68", "MONEY", "419534.68"),
+        ("fee of ₨0.001b to", ".001b", "MONEY", "0.001b"),
+        ("stands at 540154$.", "540", "MONEY", "540154"),
+        ("NAME stays", "NAME", "NAME", "NAME"),
+    ],
+)
+def test_normalize_span(text: str, needle: str, label: str, expected: str) -> None:
+    """AGE keeps its digits and MONEY grows to the full amount."""
+    start = text.index(needle)
+    normalized = normalize_span(text, start, start + len(needle), label)
+    assert text[normalized[0] : normalized[1]] == expected
 
 
 def test_columnar_length_mismatch_is_a_bad_mask() -> None:

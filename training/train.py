@@ -16,6 +16,7 @@ from transformers import (
 from preempt.bio import ID_TO_TAG, TAG_NAMES, TAG_TO_ID, spans_from_tags, tags_from_spans
 from preempt.contracts import LABELS
 from training.labels import SOURCE_TO_LABEL
+from training.prepare import normalize_span
 
 
 Span = tuple[int, int, str]
@@ -208,6 +209,14 @@ def predict_split(
         Fast tokenizer matching ``model``.
     rows : list[dict[str, object]]
         Examples with ``text`` and ``entities``.
+    # Example row:
+    # {
+    #     "text": "My grandfather was 87 years old and earned $12,000.",
+    #     "entities": [
+    #         {"start": 21, "end": 23, "label": "AGE"},
+    #         {"start": 44, "end": 50, "label": "MONEY"}
+    #     ]
+    # }
     max_length : int
         Maximum tokens per example.
     batch_size : int
@@ -248,7 +257,14 @@ def predict_split(
             confidences = [float(score) for score in score_batch[index].tolist()]
             spans, dropped = spans_from_tags(texts[index], offsets, tag_ids, confidences, source="distilbert")
             dropped_spans += dropped
-            predicted_rows.append([(span.start, span.end, span.label) for span in spans])
+            # Same AGE/MONEY snap as the gold spans written by prepare.
+            normalized: list[Span] = []
+            for span in spans:
+                norm_start, norm_end = normalize_span(texts[index], span.start, span.end, span.label)
+                if norm_start >= norm_end:
+                    norm_start, norm_end = span.start, span.end
+                normalized.append((norm_start, norm_end, span.label))
+            predicted_rows.append(normalized)
             raw_entities = row["entities"]
             if not isinstance(raw_entities, list):
                 raise TypeError("entities must be a list")

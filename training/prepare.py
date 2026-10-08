@@ -11,6 +11,19 @@ from training.labels import SOURCE_TO_LABEL, check_label_map
 
 
 def _column(raw: dict[str, object], key: str) -> list[object]:
+    """
+    Retrieve a column from a dict assumed to be in columnar format.
+
+    Args:
+        raw: The raw privacy_mask object, a dict of column lists by key.
+        key: The column name to extract.
+
+    Returns:
+        The column as a list of objects.
+
+    Raises:
+        TypeError: If the column is not present as a list.
+    """
     column = raw.get(key)
     if not isinstance(column, list):
         raise TypeError("privacy_mask object is not columnar")
@@ -54,7 +67,7 @@ def mask_dicts(raw: object) -> list[dict[str, object]]:
     Parameters
     ----------
     raw : object
-        A list of dicts, a JSON string of that list, or a columnar dict.
+        A list of dicts, a JSON string of that list, or a columnar dict. 
 
     Returns
     -------
@@ -84,6 +97,53 @@ def mask_dicts(raw: object) -> list[dict[str, object]]:
             for index in range(len(starts))
         ]
     raise TypeError("privacy_mask has an unexpected type")
+
+
+def normalize_span(text: str, start: int, end: int, label: str) -> tuple[int, int]:
+    """Snap AGE to its number and MONEY to the full amount.
+
+    Parameters
+    ----------
+    text : str
+        Source text.
+    start : int
+        Inclusive character start.
+    end : int
+        Exclusive character end.
+    label : str
+        Canonical label. Other labels are returned unchanged.
+
+    Returns
+    -------
+    tuple[int, int]
+        Normalized ``(start, end)``.
+
+    """
+    if label == "AGE":
+        # Gold is "73", "73 years", or "73 years old". Keep the digits.
+        while start < end and not text[start].isdigit():
+            start += 1
+        end = start
+        while end < len(text) and text[end].isdigit():
+            end += 1
+        return start, end
+    if label == "MONEY":
+        # A span may start at "." or ",". Include the digits in front of it,
+        # then the rest of the amount. Stop before currency words ("Rp", "kr").
+        while start > 0 and text[start - 1].isdigit():
+            start -= 1
+        while end < len(text):
+            if text[end].isdigit():
+                end += 1
+                continue
+            # "." or "," only when a digit follows, so a sentence period stays out.
+            if text[end] in ".," and end + 1 < len(text) and text[end + 1].isdigit():
+                end += 1
+                continue
+            break
+        if end < len(text) and text[end] in "kKmMbB":
+            end += 1
+    return start, end
 
 
 def entities_from_mask(
@@ -130,6 +190,9 @@ def entities_from_mask(
             return [], "bad_offsets"
         if text[start:end] != value:
             return [], "text_mismatch"
+        norm_start, norm_end = normalize_span(text, start, end, label)
+        if norm_start < norm_end:
+            start, end = norm_start, norm_end
         entities.append({"start": start, "end": end, "label": label})
 
     entities.sort(key=lambda entity: (_as_int(entity["start"]), _as_int(entity["end"])))
@@ -173,17 +236,12 @@ def main() -> None:
     check_label_map()
     dataset = load_dataset(args.dataset, split="train")
 
-    language_counts: Counter[str] = Counter()
     reject_reasons: Counter[str] = Counter()
     unmapped: Counter[str] = Counter()
     label_counts: Counter[str] = Counter()
     buckets: dict[str, list[dict[str, object]]] = {"train": [], "validation": [], "test": []}
 
     for row in tqdm(dataset, desc="prepare"):
-        language = str(row["language"])
-        language_counts[language] += 1
-        if language != "en":
-            continue
         text = str(row["source_text"])
         entities, reason = entities_from_mask(text, row["privacy_mask"], unmapped)
         if reason is not None:
@@ -197,7 +255,6 @@ def main() -> None:
     stats: dict[str, object] = {
         "dataset": args.dataset,
         "seed": args.seed,
-        "languages": dict(language_counts),
         "rows_rejected": sum(reject_reasons.values()),
         "reject_reasons": dict(reject_reasons),
         "unmapped_labels": dict(unmapped),

@@ -8,10 +8,13 @@ license = "Apache-2.0"
 repository = "https://github.com/VectorInstitute/preempt-guardrail"
 requires-python = ">=3.12"
 dependencies = [
-    "filelock==4.0.5",  
+    "filelock==4.0.5",
     "requests>=2.33.0", # Pinning version to address vulnerability CVE-2026-25645
     "urllib3==2.8.0",
     "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
+    "onnxruntime>=1.30.0",
+    "transformers>=5.18.0",
+    "onnx>=1.23.2",
 ]
 
 [build-system]

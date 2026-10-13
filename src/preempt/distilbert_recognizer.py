@@ -54,12 +54,21 @@ class DistilBertRecognizer:
             max_length=self.max_length,
             return_tensors="pt",
         )
+        # pop offset_mapping from the encoded dictionary because model doesn't accept it
+        # [0] selects first batch item.
+        # offset_mapping is [batch_size, tokens, 2], where the last axis is
+        # the character start and end.
         offset_rows = encoded.pop("offset_mapping")[0].tolist()
         offsets = [(int(start), int(end)) for start, end in offset_rows]
         with torch.no_grad():
+            # logits is [batch_size, tokens, num_tags]
+            # logits[0] drops the batch axis, leaving [tokens, num_labels]
             logits = self.model(**encoded).logits[0]
+            # probs is [tokens, num_labels]
             probs = torch.softmax(logits, dim=-1)
+            # tag_ids is [tokens]
             tag_ids = [int(tag_id) for tag_id in probs.argmax(dim=-1).tolist()]
+            # confidences is [tokens]
             confidences = [float(score) for score in probs.max(dim=-1).values.tolist()]
         spans, _dropped = spans_from_tags(text, offsets, tag_ids, confidences, source="distilbert")
         return spans

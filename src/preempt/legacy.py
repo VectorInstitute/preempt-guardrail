@@ -50,7 +50,14 @@ class LegacyNERShim:
             raise ValueError(f"unsupported entity type: {entity_type}") from None
         if output_dict is None:
             output_dict = {}
-        output_dict[entity_type] = [
-            [span.text for span in self.recognizer.recognize(prompt) if span.label == label] for prompt in prompts
-        ]
+        result = []
+        for prompt in prompts:
+            extracted_texts = []
+            spans = self.recognizer.recognize(prompt)
+            for span in spans:
+                if span.label == label:
+                    extracted_texts.append(span.text)
+            result.append(extracted_texts)
+        output_dict[entity_type] = result
+   
         return output_dict

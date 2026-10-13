@@ -1,4 +1,5 @@
 """Write AGE and MONEY test misses from a saved DistilBERT checkpoint."""
+"""This is a **temporary script** to help with debugging the DistilBERT model and will be removed soon."""
 
 import argparse
 import os
@@ -43,7 +44,7 @@ def main() -> None:
 
     # Only keep rows with AGE or MONEY spans.
     keep = [index for index, spans in enumerate(gold_rows) if any(span[2] in FOCUS for span in spans)]
-    rows = [rows[index] for index in keep]x
+    rows = [rows[index] for index in keep]
     gold_rows = [gold_rows[index] for index in keep]
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True)

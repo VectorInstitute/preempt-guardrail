@@ -93,15 +93,10 @@ class DistilBertRecognizer:
         # that covers only the digits before the comma. A symbol-led amount
         # fills that gap unless a MONEY span already covers it.
         for start, end in currency_spans(text):
-            if any(
-                span.label == "MONEY" and span.start <= start and span.end >= end
-                for span in normalized
-            ):
+            if any(span.label == "MONEY" and span.start <= start and span.end >= end for span in normalized):
                 continue
             normalized = [
-                span
-                for span in normalized
-                if not (span.label == "MONEY" and span.start < end and start < span.end)
+                span for span in normalized if not (span.label == "MONEY" and span.start < end and start < span.end)
             ]
             normalized.append(
                 EntitySpan(

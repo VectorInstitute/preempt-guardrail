@@ -1,5 +1,7 @@
-"""Write AGE and MONEY test misses from a saved DistilBERT checkpoint."""
-"""This is a **temporary script** to help with debugging the DistilBERT model and will be removed soon."""
+"""Write AGE and MONEY test misses from a saved DistilBERT checkpoint.
+
+Temporary debugging script. It will be removed soon.
+"""
 
 import argparse
 import os

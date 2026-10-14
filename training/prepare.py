@@ -19,10 +19,12 @@ def _column(raw: dict[str, object], key: str) -> list[object]:
         raw: The raw privacy_mask object, a dict of column lists by key.
         key: The column name to extract.
 
-    Returns:
+    Returns
+    -------
         The column as a list of objects.
 
-    Raises:
+    Raises
+    ------
         TypeError: If the column is not present as a list.
     """
     column = raw.get(key)
@@ -68,7 +70,7 @@ def mask_dicts(raw: object) -> list[dict[str, object]]:
     Parameters
     ----------
     raw : object
-        A list of dicts, a JSON string of that list, or a columnar dict. 
+        A list of dicts, a JSON string of that list, or a columnar dict.
 
     Returns
     -------

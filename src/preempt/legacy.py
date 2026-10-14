@@ -1,6 +1,7 @@
 """Adapt a span recognizer to the extract() shape Sanitizer already calls."""
 
 from preempt.contracts import SANITIZER_ENTITY, Recognizer
+from preempt.spans import join_name_spans
 
 
 class LegacyNERShim:
@@ -41,6 +42,7 @@ class LegacyNERShim:
         -------
         dict[str, list[list[str]]]
             ``{entity_type: [[span text, ...], ...]}``, one list per prompt.
+            Adjacent ``Name`` spans separated only by whitespace are one string.
 
         """
         del batch_size
@@ -52,12 +54,11 @@ class LegacyNERShim:
             output_dict = {}
         result = []
         for prompt in prompts:
-            extracted_texts = []
-            spans = self.recognizer.recognize(prompt)
-            for span in spans:
-                if span.label == label:
-                    extracted_texts.append(span.text)
+            spans = [span for span in self.recognizer.recognize(prompt) if span.label == label]
+            extracted_texts = [span.text for span in spans]
+            if entity_type == "Name":
+                extracted_texts = join_name_spans(prompt, spans)
             result.append(extracted_texts)
         output_dict[entity_type] = result
-   
+
         return output_dict

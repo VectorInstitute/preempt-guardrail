@@ -15,8 +15,8 @@ from transformers import (
 
 from preempt.bio import ID_TO_TAG, TAG_NAMES, TAG_TO_ID, spans_from_tags, tags_from_spans
 from preempt.contracts import LABELS
+from preempt.spans import normalize_span
 from training.labels import SOURCE_TO_LABEL
-from training.prepare import normalize_span
 
 
 Span = tuple[int, int, str]

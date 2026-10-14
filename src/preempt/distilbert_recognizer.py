@@ -5,6 +5,7 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 
 from preempt.bio import ID_TO_TAG, spans_from_tags
 from preempt.contracts import EntitySpan
+from preempt.spans import currency_spans, normalize_span
 
 
 class DistilBertRecognizer:
@@ -71,4 +72,41 @@ class DistilBertRecognizer:
             # confidences is [tokens]
             confidences = [float(score) for score in probs.max(dim=-1).values.tolist()]
         spans, _dropped = spans_from_tags(text, offsets, tag_ids, confidences, source="distilbert")
-        return spans
+        # Snap AGE to its digits and MONEY to the full amount, same as training eval.
+        # NAME and the other labels keep the decoded bounds.
+        normalized: list[EntitySpan] = []
+        for span in spans:
+            start, end = normalize_span(text, span.start, span.end, span.label)
+            if start >= end:
+                start, end = span.start, span.end
+            normalized.append(
+                EntitySpan(
+                    start=start,
+                    end=end,
+                    text=text[start:end],
+                    label=span.label,
+                    confidence=span.confidence,
+                    source=span.source,
+                )
+            )
+        # The checkpoint tags many "$10,000" style amounts as O, or as an ID
+        # that covers only the digits before the comma. A symbol-led amount
+        # fills that gap unless a MONEY span already covers it.
+        for start, end in currency_spans(text):
+            if any(span.label == "MONEY" and span.start <= start and span.end >= end for span in normalized):
+                continue
+            normalized = [
+                span for span in normalized if not (span.label == "MONEY" and span.start < end and start < span.end)
+            ]
+            normalized.append(
+                EntitySpan(
+                    start=start,
+                    end=end,
+                    text=text[start:end],
+                    label="MONEY",
+                    confidence=1.0,
+                    source="currency",
+                )
+            )
+        normalized.sort(key=lambda span: (span.start, span.end))
+        return normalized

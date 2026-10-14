@@ -4,7 +4,8 @@ from collections import Counter
 
 import pytest
 
-from training.prepare import entities_from_mask, mask_dicts, normalize_span, split_name
+from preempt.spans import currency_spans, normalize_span
+from training.prepare import entities_from_mask, mask_dicts, split_name
 
 
 def test_list_mask_maps_firstname_and_keeps_the_slice() -> None:
@@ -103,6 +104,13 @@ def test_normalize_span(text: str, needle: str, label: str, expected: str) -> No
     start = text.index(needle)
     normalized = normalize_span(text, start, start + len(needle), label)
     assert text[normalized[0] : normalized[1]] == expected
+
+
+def test_currency_spans_omit_the_symbol() -> None:
+    """The symbol anchors the match and stays outside the returned amount."""
+    text = "Ben withdrew $10,000 from the bank. Adam got $5,550 in a loan. I won $25. Balance 540154$."
+    found = [text[start:end] for start, end in currency_spans(text)]
+    assert found == ["10,000", "5,550", "25", "540154"]
 
 
 def test_columnar_length_mismatch_is_a_bad_mask() -> None:

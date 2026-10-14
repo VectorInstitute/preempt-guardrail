@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from preempt.contracts import LABELS
+from preempt.spans import normalize_span
 from training.labels import SOURCE_TO_LABEL, check_label_map
 
 
@@ -18,10 +19,12 @@ def _column(raw: dict[str, object], key: str) -> list[object]:
         raw: The raw privacy_mask object, a dict of column lists by key.
         key: The column name to extract.
 
-    Returns:
+    Returns
+    -------
         The column as a list of objects.
 
-    Raises:
+    Raises
+    ------
         TypeError: If the column is not present as a list.
     """
     column = raw.get(key)
@@ -67,7 +70,7 @@ def mask_dicts(raw: object) -> list[dict[str, object]]:
     Parameters
     ----------
     raw : object
-        A list of dicts, a JSON string of that list, or a columnar dict. 
+        A list of dicts, a JSON string of that list, or a columnar dict.
 
     Returns
     -------
@@ -97,53 +100,6 @@ def mask_dicts(raw: object) -> list[dict[str, object]]:
             for index in range(len(starts))
         ]
     raise TypeError("privacy_mask has an unexpected type")
-
-
-def normalize_span(text: str, start: int, end: int, label: str) -> tuple[int, int]:
-    """Snap AGE to its number and MONEY to the full amount.
-
-    Parameters
-    ----------
-    text : str
-        Source text.
-    start : int
-        Inclusive character start.
-    end : int
-        Exclusive character end.
-    label : str
-        Canonical label. Other labels are returned unchanged.
-
-    Returns
-    -------
-    tuple[int, int]
-        Normalized ``(start, end)``.
-
-    """
-    if label == "AGE":
-        # Gold is "73", "73 years", or "73 years old". Keep the digits.
-        while start < end and not text[start].isdigit():
-            start += 1
-        end = start
-        while end < len(text) and text[end].isdigit():
-            end += 1
-        return start, end
-    if label == "MONEY":
-        # A span may start at "." or ",". Include the digits in front of it,
-        # then the rest of the amount. Stop before currency words ("Rp", "kr").
-        while start > 0 and text[start - 1].isdigit():
-            start -= 1
-        while end < len(text):
-            if text[end].isdigit():
-                end += 1
-                continue
-            # "." or "," only when a digit follows, so a sentence period stays out.
-            if text[end] in ".," and end + 1 < len(text) and text[end + 1].isdigit():
-                end += 1
-                continue
-            break
-        if end < len(text) and text[end] in "kKmMbB":
-            end += 1
-    return start, end
 
 
 def entities_from_mask(

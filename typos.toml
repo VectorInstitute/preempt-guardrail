@@ -1,0 +1,2 @@
+[files]
+extend-exclude = ["src/preempt/names_dataset.json"]

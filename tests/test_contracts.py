@@ -98,6 +98,27 @@ def test_shim_extract_shape() -> None:
     assert money["Money"] == [["$200"], []]
 
 
+def test_shim_joins_names_separated_only_by_whitespace() -> None:
+    """Ben and Parker become one name. A word between names keeps them apart."""
+
+    class _SplitNameRecognizer:
+        """Returns each name token as its own span."""
+
+        def recognize(self, text: str) -> list[EntitySpan]:
+            """Return the four name tokens in the demo sentence."""
+            del text
+            return [
+                EntitySpan(0, 3, "Ben", "NAME", 1.0, "fake"),
+                EntitySpan(4, 10, "Parker", "NAME", 1.0, "fake"),
+                EntitySpan(15, 19, "John", "NAME", 1.0, "fake"),
+                EntitySpan(20, 23, "Doe", "NAME", 1.0, "fake"),
+            ]
+
+    text = "Ben Parker and John Doe went to the bank."
+    names = LegacyNERShim(_SplitNameRecognizer()).extract([text], entity_type="Name")
+    assert names == {"Name": [["Ben Parker", "John Doe"]]}
+
+
 def test_shim_rejects_unknown_entity_type() -> None:
     """Entity types other than Name, Money, and Age are rejected."""
 

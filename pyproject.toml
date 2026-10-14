@@ -96,6 +96,11 @@ mypy_path = "src"
 module = ["datasets", "datasets.*", "torch", "torch.*", "transformers", "transformers.*", "tqdm", "tqdm.*"]
 ignore_missing_imports = true
 
+# The sanitizer and its name-list helpers predate the strict checker.
+[[tool.mypy.overrides]]
+module = ["preempt.sanitizer", "preempt.utils"]
+ignore_errors = true
+
 [tool.ruff]
 include = ["*.py", "pyproject.toml", "*.ipynb"]
 exclude = []

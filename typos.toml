@@ -1,2 +1,6 @@
 [files]
 extend-exclude = ["src/preempt/names_dataset.json"]
+
+[default]
+# Notebook outputs store ANSI codes as `\u001b[...m`, which glues `m` onto the next word.
+extend-ignore-re = ["\\\\u001b\\[[0-9;]*m"]

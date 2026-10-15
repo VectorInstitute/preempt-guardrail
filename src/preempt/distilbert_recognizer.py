@@ -44,14 +44,14 @@ class DistilBertRecognizer:
             self.model = AutoModelForTokenClassification.from_pretrained(model_path)
             self.model.eval()
         elif backend == "onnx":
-            from optimum.onnxruntime import ORTModelForTokenClassification
+            # Loaded only for the ONNX backend so PyTorch runs do not import it.
+            from optimum.onnxruntime import ORTModelForTokenClassification  # noqa: PLC0415
 
             load_options = {}
             if onnx_file_name is not None:
                 load_options["file_name"] = onnx_file_name
             self.model = ORTModelForTokenClassification.from_pretrained(model_path, **load_options)
         self._check_labels()
-        
 
     def _check_labels(self) -> None:
         raw = self.model.config.id2label

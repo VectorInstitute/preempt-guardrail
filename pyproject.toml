@@ -192,5 +192,5 @@ markers = [
 
 [tool.coverage]
     [tool.coverage.run]
-    source=["src/aieng_template_uv"]
+    source=["src/preempt"]
     omit=["tests/*", "*__init__.py"]

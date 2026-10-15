@@ -1,5 +1,7 @@
 """DistilBERT token classifier that returns character spans."""
 
+from typing import Literal
+
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 
@@ -11,7 +13,13 @@ from preempt.spans import currency_spans, normalize_span
 class DistilBertRecognizer:
     """Load a fine-tuned DistilBERT checkpoint and emit character spans."""
 
-    def __init__(self, model_path: str, max_length: int = 512) -> None:
+    def __init__(
+        self,
+        model_path: str,
+        max_length: int = 512,
+        backend: Literal["pytorch", "onnx"] = "pytorch",
+        onnx_file_name: str | None = None,
+    ) -> None:
         """Load the tokenizer and token-classification head.
 
         Parameters
@@ -20,13 +28,30 @@ class DistilBertRecognizer:
             Hugging Face model id or a local checkpoint directory.
         max_length : int
             Maximum tokens per call. Longer text is truncated.
+        backend : Literal["pytorch", "onnx"]
+            Backend to use for inference.
+        onnx_file_name : str | None
+            ONNX file to load from ``model_path``, such as ``model.onnx`` or
+            ``model_int8.onnx``. Required only when the directory contains
+            multiple ONNX model variants.
 
         """
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-        self.model = AutoModelForTokenClassification.from_pretrained(model_path)
+        if backend == "pytorch":
+            if onnx_file_name is not None:
+                raise ValueError("onnx_file_name can only be used with the ONNX backend")
+            self.model = AutoModelForTokenClassification.from_pretrained(model_path)
+            self.model.eval()
+        elif backend == "onnx":
+            from optimum.onnxruntime import ORTModelForTokenClassification
+
+            load_options = {}
+            if onnx_file_name is not None:
+                load_options["file_name"] = onnx_file_name
+            self.model = ORTModelForTokenClassification.from_pretrained(model_path, **load_options)
         self._check_labels()
-        self.model.eval()
+        
 
     def _check_labels(self) -> None:
         raw = self.model.config.id2label

@@ -248,6 +248,7 @@ class Sanitizer:
                     # Grad mapping for decoding and for sanity.
                     temp_dict[ct_name] = input
 
+                # When FPE is not used, we generate random names. The decryption will break in this case.
                 else:
                     first_names = []
                     last_names = []
@@ -363,6 +364,8 @@ class Sanitizer:
             trip = 0
             for real_money in input:
                 try:
+                    # Remove commas from the money value.
+                    real_money = real_money.replace(",", "")
                     if use_fpe:
                         offset = 6
                         val = "9" * offset + str(real_money)

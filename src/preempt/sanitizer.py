@@ -11,7 +11,7 @@ import numpy as np
 from names_dataset import NameDataset
 from pyfpe_ff3 import FF3Cipher
 
-from .utils import check, load_data, make_names_dataset
+from preempt.utils import check, load_data, make_names_dataset
 
 
 class Sanitizer:
@@ -280,7 +280,9 @@ class Sanitizer:
             use_cache (bool): When ``True``, ignore ``extraction`` and decrypt
                 the ciphertext names cached in ``entity_mapping``. When
                 ``False`` and ``extraction`` is provided, decrypt those names.
-        Returns:
+
+        Returns
+        -------
             decrypted_lines (List[str]): List of desanitized strings
         """
         extraction = kwargs["extraction"]
@@ -302,16 +304,23 @@ class Sanitizer:
                         encrypted_first_name = name_parts[0]
                         plaintext_first_name_idx = check(first_names, encrypted_first_name)
 
-                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(plaintext_first_name_idx)
+                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(
+                            plaintext_first_name_idx
+                        )
                         fpe_plaintext_idx = padded_first_name_idx
 
                         for encrypted_last_name in name_parts[1:]:
                             plaintext_last_name_idx = check(last_names, encrypted_last_name)
-                            padded_last_name_idx = "0" * (offset - len(str(plaintext_last_name_idx))) + str(plaintext_last_name_idx)
+                            padded_last_name_idx = "0" * (offset - len(str(plaintext_last_name_idx))) + str(
+                                plaintext_last_name_idx
+                            )
                             fpe_plaintext_idx += padded_last_name_idx
 
                         decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
-                        decrypted_indexes = [decrypted_index_string[i : i + offset] for i in range(0, len(decrypted_index_string), offset)]
+                        decrypted_indexes = [
+                            decrypted_index_string[i : i + offset]
+                            for i in range(0, len(decrypted_index_string), offset)
+                        ]
 
                         decrypted_name = first_names[int(decrypted_indexes[0])]
                         for last_name_idx_str in decrypted_indexes[1:]:
@@ -325,11 +334,16 @@ class Sanitizer:
                     else:
                         encrypted_first_name = name
                         plaintext_first_name_idx = check(first_names, encrypted_first_name)
-                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(plaintext_first_name_idx)
+                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(
+                            plaintext_first_name_idx
+                        )
                         fpe_plaintext_idx = padded_first_name_idx + "9" * offset
 
                         decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
-                        decrypted_indexes = [decrypted_index_string[i : i + offset] for i in range(0, len(decrypted_index_string), offset)]
+                        decrypted_indexes = [
+                            decrypted_index_string[i : i + offset]
+                            for i in range(0, len(decrypted_index_string), offset)
+                        ]
 
                         decrypted_name = first_names[int(decrypted_indexes[0])]
                         for last_name_idx_str in decrypted_indexes[1:]:
@@ -342,7 +356,7 @@ class Sanitizer:
                     raise Exception("Decrypt target not found in names dataset!") from err
 
                 line = line.replace(name, replacement_name)
-           
+
             decrypted_lines.append(line)
 
         return decrypted_lines

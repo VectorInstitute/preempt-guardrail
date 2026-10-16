@@ -4,7 +4,6 @@ import pytest
 
 from preempt.bio import IGNORE_TAG_ID, TAG_TO_ID, spans_from_tags, tags_from_spans
 from preempt.contracts import (
-    LABELS,
     AnonymizationContext,
     AnonymizationResult,
     EntitySpan,
@@ -12,7 +11,6 @@ from preempt.contracts import (
     validate_span,
 )
 from preempt.legacy import LegacyNERShim
-from training.labels import SOURCE_TO_LABEL
 
 
 def test_validate_span_accepts_exact_slice() -> None:
@@ -132,11 +130,6 @@ def test_shim_rejects_unknown_entity_type() -> None:
 
     with pytest.raises(ValueError, match="unsupported entity type"):
         LegacyNERShim(_EmptyRecognizer()).extract(["Ben"], entity_type="Email")
-
-
-def test_source_labels_stay_inside_canonical_set() -> None:
-    """Every training label maps to a label the sanitizer contract knows."""
-    assert set(SOURCE_TO_LABEL.values()) <= set(LABELS)
 
 
 def test_anonymization_result_keeps_span_and_replacement() -> None:

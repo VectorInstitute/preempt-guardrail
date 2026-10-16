@@ -267,8 +267,19 @@ class Sanitizer:
         """
         Desanitizes names in a list of sanitized strings.
 
+        Each target name is format-preserving decrypted against the first- and
+        last-name alphabets cached in ``entity_lookup`` during ``encrypt``.
+
         Args:
-            inputs (List[str]): List of sanitized strings
+            inputs (List[str]): List of sanitized strings.
+            extraction (List[List[str]] | None): Ciphertext names to decrypt,
+                one list per input string. These are typically names detected
+                in the sanitized text. When ``None``, the ciphertext names
+                cached in ``entity_mapping`` during the last ``encrypt`` call
+                are decrypted instead.
+            use_cache (bool): When ``True``, ignore ``extraction`` and decrypt
+                the ciphertext names cached in ``entity_mapping``. When
+                ``False`` and ``extraction`` is provided, decrypt those names.
         Returns:
             decrypted_lines (List[str]): List of desanitized strings
         """
@@ -287,55 +298,51 @@ class Sanitizer:
             for i, name in enumerate(decrypt_target[line_idx]):
                 try:
                     if " " in name and name not in first_names:
-                        # print("HERE")
-                        t_names = name.split()
-                        a = t_names[0]
-                        pt_fn_idx = check(first_names, a)
+                        name_parts = name.split()
+                        encrypted_first_name = name_parts[0]
+                        plaintext_first_name_idx = check(first_names, encrypted_first_name)
 
-                        pt_fn_idx = "0" * (offset - len(str(pt_fn_idx))) + str(pt_fn_idx)
-                        pt_idx = "" + pt_fn_idx
+                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(plaintext_first_name_idx)
+                        fpe_plaintext_idx = padded_first_name_idx
 
-                        for b in t_names[1:]:
-                            pt_ln_idx = check(last_names, b)
-                            pt_ln_idx = "0" * (offset - len(str(pt_ln_idx))) + str(pt_ln_idx)
-                            pt_idx += pt_ln_idx
+                        for encrypted_last_name in name_parts[1:]:
+                            plaintext_last_name_idx = check(last_names, encrypted_last_name)
+                            padded_last_name_idx = "0" * (offset - len(str(plaintext_last_name_idx))) + str(plaintext_last_name_idx)
+                            fpe_plaintext_idx += padded_last_name_idx
 
-                        ct_idx = self.fpe_decrypt(pt_idx)
-                        ct_idxs = [ct_idx[i : i + offset] for i in range(0, len(ct_idx), offset)]
+                        decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
+                        decrypted_indexes = [decrypted_index_string[i : i + offset] for i in range(0, len(decrypted_index_string), offset)]
 
-                        # print(ct_idxs)
-                        ct_name = first_names[int(ct_idxs[0])]
-                        for b in ct_idxs[1:]:
-                            if b == "9" * offset:
+                        decrypted_name = first_names[int(decrypted_indexes[0])]
+                        for last_name_idx_str in decrypted_indexes[1:]:
+                            if last_name_idx_str == "9" * offset:
                                 continue
-                            ct_last_name = last_names[int(b)]
-                            ct_name = ct_name + " " + ct_last_name
+                            decrypted_last_name = last_names[int(last_name_idx_str)]
+                            decrypted_name = decrypted_name + " " + decrypted_last_name
 
-                        pt_name = ct_name
+                        replacement_name = decrypted_name
 
                     else:
-                        a = name
-                        pt_fn_idx = check(first_names, a)  # first_names.index(a)
-                        pt_fn_idx = "0" * (offset - len(str(pt_fn_idx))) + str(pt_fn_idx)
-                        pt_idx = "" + pt_fn_idx + "9" * offset
+                        encrypted_first_name = name
+                        plaintext_first_name_idx = check(first_names, encrypted_first_name)
+                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(plaintext_first_name_idx)
+                        fpe_plaintext_idx = padded_first_name_idx + "9" * offset
 
-                        ct_idx = self.fpe_decrypt(pt_idx)
-                        ct_idxs = [ct_idx[i : i + offset] for i in range(0, len(ct_idx), offset)]
+                        decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
+                        decrypted_indexes = [decrypted_index_string[i : i + offset] for i in range(0, len(decrypted_index_string), offset)]
 
-                        ct_name = first_names[int(ct_idxs[0])]
-                        for b in ct_idxs[1:]:
-                            ct_last_name = last_names[int(b)]
-                            ct_name = ct_name + " " + ct_last_name
+                        decrypted_name = first_names[int(decrypted_indexes[0])]
+                        for last_name_idx_str in decrypted_indexes[1:]:
+                            decrypted_last_name = last_names[int(last_name_idx_str)]
+                            decrypted_name = decrypted_name + " " + decrypted_last_name
 
-                        pt_name = ct_name
+                        replacement_name = decrypted_name
 
                 except Exception as err:
                     raise Exception("Decrypt target not found in names dataset!") from err
 
-                # print(name, pt_name)
-                # print(line)
-                line = line.replace(name, pt_name)
-                # print(line)
+                line = line.replace(name, replacement_name)
+           
             decrypted_lines.append(line)
 
         return decrypted_lines

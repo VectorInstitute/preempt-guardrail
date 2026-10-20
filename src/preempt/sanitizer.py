@@ -1,604 +1,391 @@
-"""Format-preserving encryption for names, money, and age."""
+"""Replace names, money, and ages in text with fake values, and undo it.
 
-import math
+- Names: format-preserving encryption (FPE, reversible) or random names.
+- Money: FPE (reversible) or m-LDP noise.
+- Ages: m-LDP noise.
+
+``decrypt`` uses state saved by the last ``encrypt`` call, so call both on the
+same ``Sanitizer`` instance.
+
+Known limitation: values are matched as plain substrings ("Ann" also hits
+"Anna"), and some decrypt paths restore only the first match. See
+https://github.com/VectorInstitute/preempt-guardrail/issues/11.
+"""
+
 import os
+import random
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 import names
 import numpy as np
-from names_dataset import NameDataset
 from pyfpe_ff3 import FF3Cipher
 
 from preempt.utils import check, load_data, make_names_dataset
 
 
+# A name is encrypted as the 3-digit index of each word in its alphabet.
+DIGITS_PER_NAME = 3
+NO_NAME = "999"
+ALPHABET_SIZE = 1000
+# FF3 needs at least 6 digits, so small amounts are padded with this prefix.
+MONEY_FPE_PREFIX = "999999"
+
+
 class Sanitizer:
-    """Returns a sanitizer object. Call to run sanitization for a list of strings."""
+    """Encrypt and decrypt names, money, and ages detected by ``ner_model``."""
 
-    def __init__(self, ner_model: Any, key="EF4359D8D580AA4F7F036D6F04FC6A94", tweak="D8E7920AFA330A73"):
+    def __init__(
+        self,
+        ner_model: Any,
+        key: str = "EF4359D8D580AA4F7F036D6F04FC6A94",
+        tweak: str = "D8E7920AFA330A73",
+        seed: Optional[int] = None,
+    ):
         self.cipher_fn = FF3Cipher(key, tweak, allow_small_domain=True, radix=10)
-        self.name_data = NameDataset()
         self.ner = ner_model
-        self.new_entities = []
-        self.entity_lookup = []
-        self.entity_mapping = []
-
-    def replace_word(self, text: str, word1: str, word2: str):
-        """
-        Find and replace strings in a given piece of text.
-
-        Args:
-            text (str): A string containing a target substring word1.
-            word1 (str): Target to replace with word2 in text.
-            word2 (str): Replacement for word1 in text.
-
-        Returns
-        -------
-            text (str): With word1 replaced with word2
-        """
-        pattern = r"\b" + re.escape(word1) + r"\b"
-        return re.sub(pattern, word2, text, count=1)
-
-    def format_align_digits(self, text, reference_text):
-        """Put non-digit characters from ``reference_text`` back into ``text``."""
-        if len(text) != len(reference_text):
-            for idx, t in enumerate(reference_text):
-                if not t.isdigit():
-                    text = text[:idx] + t + text[idx:]
-        return text
-
-    def fpe_encrypt(self, value: str):
-        """Encrypt value using FPE."""
-        return self.format_align_digits(
-            self.cipher_fn.encrypt(str(value).replace("$", "").replace(",", "").replace(".", "").replace(" ", "")),
-            str(value),
-        )
-
-    def fpe_decrypt(self, value: str):
-        """Decrypt FPE value."""
-        return self.format_align_digits(
-            self.cipher_fn.decrypt(str(value).replace("$", "").replace(",", "").replace(".", "").replace(" ", "")),
-            str(value),
-        )
-
-    def m_epsilon(self, x: int, n_lower: int, n_upper: int, epsilon: float, discretization_size=100) -> int:
-        """
-        m-LDP for noising numerical values between bounds.
-
-        Args:
-            x (int): Value to noise with m-LDP.
-            n_lower (int): Lower bound for noising x.
-            n_upper (int): Upper bound for noising x.
-            epsilon (float): Privacy budget.
-            discretization_size: For sampling.
-
-        Returns
-        -------
-            noised_output (int): The noised output.
-        """
-        n_upper = int(n_upper)
-        n_lower = int(n_lower)
-        total_range = n_upper - n_lower
-        x = (x - n_lower) * discretization_size / total_range
-        p_i = []
-        for s in range(discretization_size):
-            p_i.append(math.exp(-abs(x - s) * epsilon / 2))
-        p_i = [val / sum(p_i) for val in p_i]
-        noised_output = (
-            np.random.choice(range(discretization_size), 1, p=p_i) * total_range / discretization_size + n_lower
-        )
-        return int(noised_output[0])
-
-    def encrypt_names(  # noqa: PLR0912, PLR0915
-        self, inputs: List[str], **kwargs: Dict[str, Any]
-    ) -> Union[List[List[str]], Union[List[str], List[str]], Dict[str, str]]:
-        """Encrypt person names with format-preserving encryption.
-
-        Parameters
-        ----------
-        inputs : list[list[str]]
-            Detected names, one list per input string.
-
-        Returns
-        -------
-        tuple
-            Encrypted names, the name lists used as the cipher alphabet,
-            and a map from ciphertext names to plaintext names.
-        """
-        new_entities = []
-        entity_lookup = []
-        entity_mapping = []
-        use_fpe = kwargs["use_fpe"]
-
-        if use_fpe:
-            try:
-                names_dataset = load_data("preempt/names_dataset.json")
-            except Exception:
-                names_dataset_save_path = f"{os.getcwd()}/names_dataset.json"
-                try:
-                    names_dataset = load_data(f"{names_dataset_save_path}")
-                except Exception:
-                    print("Names dataset not found. Generating...")
-                    make_names_dataset(names_dataset_save_path)
-                    print(f"Saved at {names_dataset_save_path}")
-                    names_dataset = load_data(f"{names_dataset_save_path}")
-            first_names, last_names = names_dataset["first_names"], names_dataset["last_names"]
-
-            # Drop the last k alphabet names and insert the inputs.
-            input_first_names = []
-            input_last_names = []
-            for _i, k_input in enumerate(inputs):
-                temp_fnames = []
-                temp_lnames = []
-                for input in k_input:
-                    # print(repr(input))
-                    if " " in input:
-                        temp_ab = input.split()
-                        a, bs = temp_ab[0], temp_ab[1:]
-                        input_first_names.append(a)
-                        temp_fnames.append(a)
-                        for b in bs:
-                            input_last_names.append(b)
-                            temp_lnames.append(b)
-                    else:
-                        input_first_names.append(input)
-                        temp_fnames.append(input)
-
-                # For cases where the first or last name of a
-                # full name appear independently.
-                # The full name will always be modified first,
-                # so there is no scope of 2 word name becoming
-                # a 4 word name.
-                for tt in temp_fnames:
-                    k_input.append(tt)
-                for tt in temp_lnames:
-                    k_input.append(tt)
-            # Get rid of first names like Jean Baptiste
-            temp = []
-            for name in first_names:
-                if " " not in name:
-                    temp.append(name)
-
-            first_names = temp[:]
-
-            temp = []
-            for name in last_names:
-                if " " not in name:
-                    temp.append(name)
-            last_names = temp[:]
-
-            # Get rid of repetitions in the list itself.
-            excess_fnames = 0
-            excess_lnames = 0
-            for name in input_first_names:
-                if name in first_names:
-                    first_names.remove(name)
-                    excess_fnames += 1
-            for name in input_last_names:
-                if name in last_names:
-                    last_names.remove(name)
-                    excess_lnames += 1
-
-            first_names = first_names[:1000]
-            last_names = last_names[:1000]
-            first_names = (
-                first_names[: min(-len(input_first_names) - 1, -2)] + list(input_first_names) + [first_names[-1]]
-            )
-            last_names = last_names[: min(-len(input_last_names) - 1, -2)] + list(input_last_names) + [last_names[-1]]
-            # assert len(first_names)==1000
-            # assert len(last_names)==1000
-
-        offset = 3
-        for k_input in inputs:
-            temp = []
-            temp_dict = {}
-            for _k, input in enumerate(k_input):
-                if use_fpe:
-                    if " " in input:
-                        # If already first-last name, run and conjoin.
-                        t_names = input.split()
-                        a = t_names[0]
-                        pt_fn_idx = check(first_names, a)  # first_names.index(a)
-                        pt_fn_idx = "0" * (offset - len(str(pt_fn_idx))) + str(pt_fn_idx)
-                        pt_idx = "" + pt_fn_idx
-
-                        for b in t_names[1:]:
-                            pt_ln_idx = check(last_names, b)  # last_names.index(b)
-                            pt_ln_idx = "0" * (offset - len(str(pt_ln_idx))) + str(pt_ln_idx)
-                            pt_idx += pt_ln_idx
-
-                        ct_idx = self.fpe_encrypt(pt_idx)
-                        ct_idxs = [ct_idx[i : i + offset] for i in range(0, len(ct_idx), offset)]
-
-                        ct_name = first_names[int(ct_idxs[0])]
-                        for b in ct_idxs[1:]:
-                            ct_last_name = last_names[int(b)]
-                            ct_name = ct_name + " " + ct_last_name
-
-                        if ct_name not in temp:
-                            temp.append(ct_name)
-                    else:
-                        a = input
-                        try:
-                            pt_fn_idx = check(first_names, a)  # first_names.index(a)
-                            pt_fn_idx = "0" * (offset - len(str(pt_fn_idx))) + str(pt_fn_idx)
-                            pt_idx = "" + pt_fn_idx + "9" * offset
-
-                            ct_idx = self.fpe_encrypt(pt_idx)
-                            ct_idxs = [ct_idx[i : i + offset] for i in range(0, len(ct_idx), offset)]
-                            ct_name = first_names[int(ct_idxs[0])]
-                        except Exception:
-                            pt_fn_idx = check(last_names, a)  # last_names.index(a)
-                            pt_fn_idx = "0" * (offset - len(str(pt_fn_idx))) + str(pt_fn_idx)
-                            pt_idx = "" + "9" * offset + pt_fn_idx
-
-                            ct_idx = self.fpe_encrypt(pt_idx)
-                            ct_idxs = [ct_idx[i : i + offset] for i in range(0, len(ct_idx), offset)]
-                            ct_name = last_names[int(ct_idxs[0])]
-
-                        for b in ct_idxs[1:]:
-                            ct_last_name = last_names[int(b)]
-                            ct_name = ct_name + " " + ct_last_name
-
-                        if ct_name not in temp:
-                            temp.append(ct_name)
-
-                    # Grad mapping for decoding and for sanity.
-                    temp_dict[ct_name] = input
-
-                # When FPE is not used, names are random and cannot be decrypted.
-                else:
-                    first_names = []
-                    last_names = []
-                    temp_name = names.get_full_name(gender="male")
-                    temp.append(temp_name)
-                    temp_dict[temp_name] = input
-
-            new_entities.append(temp)
-            entity_mapping.append(temp_dict)
-        entity_lookup.append(first_names)
-        entity_lookup.append(last_names)
-
-        return new_entities, entity_lookup, entity_mapping
-
-    def decrypt_names(self, inputs: List[str], **kwargs: Dict[str, Any]) -> List[str]:
-        """
-        Desanitizes names in a list of sanitized strings.
-
-        Each target name is format-preserving decrypted against the first- and
-        last-name alphabets cached in ``entity_lookup`` during ``encrypt``.
-
-        Args:
-            inputs (List[str]): List of sanitized strings.
-            extraction (List[List[str]] | None): Ciphertext names to decrypt,
-                one list per input string. These are typically names detected
-                in the sanitized text. When ``None``, the ciphertext names
-                cached in ``entity_mapping`` during the last ``encrypt`` call
-                are decrypted instead.
-            use_cache (bool): When ``True``, ignore ``extraction`` and decrypt
-                the ciphertext names cached in ``entity_mapping``. When
-                ``False`` and ``extraction`` is provided, decrypt those names.
-
-        Returns
-        -------
-            decrypted_lines (List[str]): List of desanitized strings
-        """
-        extraction = kwargs["extraction"]
-        use_cached_values = kwargs["use_cache"]
-        decrypted_lines = []
-
-        for line_idx, original in enumerate(inputs):
-            line = original
-            offset = 3
-            first_names, last_names = self.entity_lookup
-            decrypt_target = self.entity_mapping if extraction is None or use_cached_values else extraction
-
-            # print(decrypt_target)
-            # print("FIRST NAMES", first_names)
-            for i, name in enumerate(decrypt_target[line_idx]):
-                try:
-                    if " " in name and name not in first_names:
-                        name_parts = name.split()
-                        encrypted_first_name = name_parts[0]
-                        plaintext_first_name_idx = check(first_names, encrypted_first_name)
-
-                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(
-                            plaintext_first_name_idx
-                        )
-                        fpe_plaintext_idx = padded_first_name_idx
-
-                        for encrypted_last_name in name_parts[1:]:
-                            plaintext_last_name_idx = check(last_names, encrypted_last_name)
-                            padded_last_name_idx = "0" * (offset - len(str(plaintext_last_name_idx))) + str(
-                                plaintext_last_name_idx
-                            )
-                            fpe_plaintext_idx += padded_last_name_idx
-
-                        decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
-                        decrypted_indexes = [
-                            decrypted_index_string[i : i + offset]
-                            for i in range(0, len(decrypted_index_string), offset)
-                        ]
-
-                        decrypted_name = first_names[int(decrypted_indexes[0])]
-                        for last_name_idx_str in decrypted_indexes[1:]:
-                            if last_name_idx_str == "9" * offset:
-                                continue
-                            decrypted_last_name = last_names[int(last_name_idx_str)]
-                            decrypted_name = decrypted_name + " " + decrypted_last_name
-
-                        replacement_name = decrypted_name
-
-                    else:
-                        encrypted_first_name = name
-                        plaintext_first_name_idx = check(first_names, encrypted_first_name)
-                        padded_first_name_idx = "0" * (offset - len(str(plaintext_first_name_idx))) + str(
-                            plaintext_first_name_idx
-                        )
-                        fpe_plaintext_idx = padded_first_name_idx + "9" * offset
-
-                        decrypted_index_string = self.fpe_decrypt(fpe_plaintext_idx)
-                        decrypted_indexes = [
-                            decrypted_index_string[i : i + offset]
-                            for i in range(0, len(decrypted_index_string), offset)
-                        ]
-
-                        decrypted_name = first_names[int(decrypted_indexes[0])]
-                        for last_name_idx_str in decrypted_indexes[1:]:
-                            decrypted_last_name = last_names[int(last_name_idx_str)]
-                            decrypted_name = decrypted_name + " " + decrypted_last_name
-
-                        replacement_name = decrypted_name
-
-                except Exception as err:
-                    raise Exception("Decrypt target not found in names dataset!") from err
-
-                line = line.replace(name, replacement_name)
-
-            decrypted_lines.append(line)
-
-        return decrypted_lines
-
-    def encrypt_money(
-        self, inputs: List[str], **kwargs: Dict[str, Any]
-    ) -> Union[List[List[str]], Union[List[str], List[str]], List[Dict[str, List[str]]]]:
-        """Encrypt money amounts with FPE or m-LDP.
-
-        Returns
-        -------
-        tuple
-            Cipher amounts, plaintext amounts, and a ciphertext map.
-        """
-        new_entities = []
-        entity_lookup = []
-        entity_mapping = []
-        use_fpe, use_mdp = kwargs["use_fpe"], kwargs["use_mdp"]
-        epsilon = kwargs["epsilon"]
-
-        valid_indices = []
-        for kk, input in enumerate(inputs):
-            temp = []
-            text_pt = []
-            temp_dict = {}
-            trip = 0
-            for raw_money in input:
-                try:
-                    # Remove commas from the money value.
-                    real_money = raw_money.replace(",", "")
-                    if use_fpe:
-                        offset = 6
-                        val = "9" * offset + str(real_money)
-                        money = self.fpe_encrypt(val)
-
-                    elif use_mdp:
-                        if int(float(real_money)) == 1:
-                            money = round(self.m_epsilon(int(float(real_money)), 1, 2, epsilon), 2)
-                        elif int(float(real_money)) < 100:
-                            money = round(self.m_epsilon(int(float(real_money)), 2, 1000, epsilon), 2)
-                        elif int(float(real_money)) < 1000:
-                            money = round(self.m_epsilon(int(float(real_money)), 100, 10000, epsilon), 2)
-                        else:
-                            money = round(self.m_epsilon(int(float(real_money)), 1000, 10000, epsilon), 2)
-
-                    temp.append(str(money))
-                    text_pt.append(str(real_money))
-                    temp_dict[str(money)] = str(real_money)
-                except Exception as e:
-                    print(e)
-                    trip += 1
-                    print("Error value:", real_money)
-                    temp.append("None")
-
-            if trip == 0:
-                valid_indices.append(kk)
-            entity_lookup.append(text_pt)
-            new_entities.append(temp)
-            entity_mapping.append(temp_dict)
-
-        return new_entities, entity_lookup, entity_mapping
-
-    def decrypt_money(self, inputs: List[str], **kwargs: Dict[str, Any]) -> List[str]:
-        """
-        Desanitizes currency values in a list of sanitized strings.
-
-        Args:
-            inputs (List[str]): List of sanitized strings
-        Returns:
-            decrypted_lines (List[str]): List of desanitized strings
-        """
-        decrypted_lines = []
-        use_fpe = kwargs["use_fpe"]
-        use_mdp = kwargs["use_mdp"]
-        extraction = kwargs["extraction"]
-        use_cached_values = kwargs["use_cache"]
-        decrypt_target = self.entity_mapping if extraction is None or use_cached_values else extraction
-        if use_fpe:
-            for line_idx, original in enumerate(inputs):
-                line = original
-                for value in decrypt_target[line_idx]:
-                    val = str(value)
-                    if len(val) < 6:
-                        continue
-                    decrypt = self.fpe_decrypt(val)
-                    decrypt = decrypt[6:]
-                    if value is None:
-                        continue
-                    if value in line:
-                        line = line.replace(value, decrypt)
-                    elif value.replace(".", ",") in line:
-                        line = line.replace(value.replace(".", ","), decrypt.replace(".", ","))
-                    else:
-                        line = line.replace(value.replace(".", ","), decrypt.replace(".", ","))
-                decrypted_lines.append(line)
-
-        elif use_mdp:
-            for line_idx, original in enumerate(inputs):
-                line = original
-                for value in decrypt_target[line_idx]:
-                    line = self.replace_word(line, value, self.entity_mapping[line_idx][value])
-                decrypted_lines.append(line)
-
-        return decrypted_lines
-
-    def encrypt_age(
-        self, inputs: List[str], **kwargs
-    ) -> Union[List[List[str]], Union[List[str], List[str]], List[Dict[str, List[str]]]]:
-        """Encrypt ages with m-LDP.
-
-        Returns
-        -------
-        tuple
-            Cipher ages, plaintext ages, and a ciphertext map.
-        """
-        new_entities = []
-        entity_lookup = []
-        entity_mapping = []
-        epsilon = kwargs["epsilon"]
-        for input in inputs:
-            temp = []
-            text_pt = []
-            temp_dict = {"pt": [], "ct": []}
-            for real_age in input:
-                try:
-                    text_pt.append(real_age)
-                    temp_age = self.m_epsilon(int(real_age), 10, 99, epsilon)
-                    age = str(temp_age)
-                    temp.append(age)
-                    temp_dict["ct"].append(age)
-                    temp_dict["pt"].append(str(real_age))
-                except (ValueError, TypeError):
-                    temp.append(None)
-            entity_mapping.append(temp_dict)
-            entity_lookup.append(text_pt)
-            new_entities.append(temp)
-
-        return new_entities, entity_lookup, entity_mapping
-
-    def decrypt_age(self, inputs: List[str], **kwargs) -> List[str]:
-        """
-        Desanitizes age values in a list of sanitized strings.
-
-        Args:
-            inputs (List[str]): List of sanitized strings
-        Returns:
-            decrypted_lines (List[str]): List of desanitized strings
-        """
-        decrypted_lines = []
-        # extraction = kwargs['extraction']
-        # use_cached_values = kwargs['use_cache']
-        decrypt_target = self.entity_mapping
-        for line_idx, original in enumerate(inputs):
-            line = original
-            extr = decrypt_target[line_idx]
-            for k in range(len(extr["pt"])):
-                line = self.replace_word(line, extr["ct"][k], extr["pt"][k])
-            decrypted_lines.append(line)
-
-        return decrypted_lines
+        # Set by encrypt(), read by decrypt().
+        self.entity_mapping: list[dict[str, Optional[str]]] = []  # {original: fake} per text
+        self.entity_lookup: list[list[str]] = []  # [first_names, last_names] used for name FPE
+        self._names_dataset: Optional[dict[str, list[str]]] = None
+        self.reseed(seed)
+
+    def reseed(self, seed: Optional[int]) -> None:
+        """Reset the RNGs used by m-LDP noise and random names."""
+        self.rng = np.random.default_rng(seed)
+        if seed is not None:
+            random.seed(seed)
+
+    # --- Public API -----------------------------------------------------------
 
     def encrypt(
-        self, inputs: List[str], epsilon=0.1, entity="Name", use_mdp=False, use_fpe=True
-    ) -> Union[List[str], List[int]]:
-        """Return sanitized strings and indexes where nothing was found.
+        self, inputs: list[str], epsilon: float = 0.1, entity: str = "Name", use_mdp: bool = False, use_fpe: bool = True
+    ) -> tuple[list[str], list[int]]:
+        """Replace every detected ``entity`` ("Name", "Money", or "Age") in ``inputs``.
 
-        Parameters
-        ----------
-        inputs : list[str]
-            Texts that contain sensitive values.
-        epsilon : float
-            Privacy budget for m-LDP.
-        entity : str
-            Name, Money, or Age.
-        use_mdp : bool
-            Noise numeric values with m-LDP.
-        use_fpe : bool
-            Encrypt values with format-preserving encryption.
+        Returns the sanitized texts and the indexes of texts where a value could
+        not be encrypted.
         """
-        enc_fn_mapping = {
-            "Name": self.encrypt_names,
-            "Money": self.encrypt_money,
-            "Age": self.encrypt_age,
-        }
-        data_encrypted = []
-        invalid_indices = []
         extracted = self.ner.extract(inputs, entity_type=entity)[entity]
-        self.new_entities, self.entity_lookup, self.entity_mapping = enc_fn_mapping[entity](
-            extracted, use_fpe=use_fpe, use_mdp=use_mdp, epsilon=epsilon
-        )
+        if entity == "Name":
+            self.entity_mapping, self.entity_lookup = self.encrypt_names(extracted, use_fpe=use_fpe)
+        elif entity == "Money":
+            if not (use_fpe or use_mdp):
+                raise ValueError("Money needs use_fpe or use_mdp to be True.")
+            self.entity_mapping = self.encrypt_money(extracted, use_fpe=use_fpe, epsilon=epsilon)
+        elif entity == "Age":
+            self.entity_mapping = self.encrypt_age(extracted, epsilon=epsilon)
+        else:
+            raise ValueError(f"Unknown entity: {entity!r}")
 
-        # print(inputs)
-        for i, original in enumerate(inputs):
-            line = original
-            # Get extracted/encrypted data  for the ith line.
-            # Substitute all values.
-            for value, encrypt in zip(extracted[i], self.new_entities[i]):
-                if value is not None and encrypt is not None:
-                    line = unicodedata.normalize("NFC", line).replace(unicodedata.normalize("NFC", value), encrypt)
-                else:
-                    invalid_indices.append(i)
+        sanitized, invalid = [], []
+        for i, (line, fakes) in enumerate(zip(inputs, self.entity_mapping)):
+            replaced = line
+            for original, fake in fakes.items():
+                if fake is None:
+                    invalid.append(i)
                     break
-
-            data_encrypted.append(line)
-
-        return data_encrypted, invalid_indices
+                replaced = _nfc(replaced).replace(_nfc(original), fake)
+            sanitized.append(replaced)
+        return sanitized, invalid
 
     def decrypt(  # noqa: PLR0917
         self,
-        inputs: List[str],
-        entity="Name",
-        extracted: Optional[Dict[str, List[str]]] = None,
-        use_mdp=False,
-        use_fpe=True,
-        use_cache=False,
-    ):
-        """Return desanitized strings.
+        inputs: list[str],
+        entity: str = "Name",
+        extracted: Optional[list[list[str]]] = None,
+        use_mdp: bool = False,  # noqa: ARG002 -- kept for API compatibility; m-LDP is used when not use_fpe
+        use_fpe: bool = True,
+        use_cache: bool = False,
+    ) -> list[str]:
+        """Restore the original values in texts produced by ``encrypt``.
 
-        Call encrypt before this method.
-
-        Parameters
-        ----------
-        inputs : list[str]
-            Sanitized texts.
-        entity : str
-            Name, Money, or Age.
-        extracted : dict or None
-            Detected values. Fresh NER output is used when omitted.
-        use_mdp : bool
-            Decrypt values that were noised with m-LDP.
-        use_fpe : bool
-            Decrypt format-preserving encryption.
-        use_cache : bool
-            Use ciphertext cached during encryption.
+        Fake values to undo come from ``extracted`` (detected in the sanitized
+        texts; NER is run if omitted), or from the last ``encrypt`` call when
+        ``use_cache`` is True. Ages always use the last ``encrypt`` call.
         """
-        dec_fn_mapping = {
-            "Name": self.decrypt_names,
-            "Money": self.decrypt_money,
-            "Age": self.decrypt_age,
-        }
         if extracted is None:
             extracted = self.ner.extract(inputs, entity_type=entity)[entity]
-        return dec_fn_mapping[entity](
-            inputs, extraction=extracted, use_fpe=use_fpe, use_mdp=use_mdp, use_cache=use_cache
-        )
+        if entity == "Name":
+            return self.decrypt_names(inputs, extracted, use_cache=use_cache)
+        if entity == "Money":
+            return self.decrypt_money(inputs, extracted, use_fpe=use_fpe, use_cache=use_cache)
+        if entity == "Age":
+            return self.decrypt_age(inputs)
+        raise ValueError(f"Unknown entity: {entity!r}")
+
+    # --- Names ----------------------------------------------------------------
+
+    def encrypt_names(
+        self, inputs: list[list[str]], use_fpe: bool = True
+    ) -> tuple[list[dict[str, Optional[str]]], list[list[str]]]:
+        """Map each name to a fake name, per text.
+
+        With FPE, the words of full names are also encrypted on their own, so a
+        later "Sarah" is replaced after "Sarah Lopez". Without FPE, fake names
+        are random and can't be decrypted.
+
+        Returns ``{original: fake}`` per text and the ``[first_names, last_names]``
+        alphabets that ``decrypt_names`` needs.
+        """
+        if not use_fpe:
+            mappings: list[dict[str, Optional[str]]] = []
+            for text_names in inputs:
+                fakes: dict[str, Optional[str]] = {}
+                for name in text_names:
+                    fakes.setdefault(name, names.get_full_name(gender="male"))
+                mappings.append(fakes)
+            return mappings, [[], []]
+
+        first_names, last_names = self._name_alphabets(inputs)
+        mappings = []
+        for text_names in inputs:
+            fakes = {}
+            first_words, last_words = _name_words(text_names)
+            for name in text_names + first_words + last_words:
+                if name not in fakes:
+                    fakes[name] = self._encrypt_name(name, first_names, last_names)
+            mappings.append(fakes)
+        return mappings, [first_names, last_names]
+
+    def decrypt_names(
+        self, inputs: list[str], extracted: Optional[list[list[str]]], use_cache: bool = False
+    ) -> list[str]:
+        """Replace fake names in ``inputs`` with the originals."""
+        first_names, last_names = self.entity_lookup
+        decrypted = []
+        for i, line in enumerate(inputs):
+            restored = line
+            for fake in self._decrypt_targets(i, extracted, use_cache):
+                try:
+                    original = self._decrypt_name(fake, first_names, last_names)
+                except Exception as err:
+                    raise ValueError(f"Decrypt target {fake!r} not found in names dataset!") from err
+                restored = restored.replace(fake, original)
+            decrypted.append(restored)
+        return decrypted
+
+    def _encrypt_name(self, name: str, first_names: list[str], last_names: list[str]) -> str:
+        """FPE-encrypt one name into a name from the same alphabets."""
+        if " " in name:
+            words = name.split()
+            digits = _index(first_names, words[0]) + "".join(_index(last_names, w) for w in words[1:])
+            return _digits_to_name(self.fpe_encrypt(digits), first_names, last_names)
+        try:
+            digits = _index(first_names, name) + NO_NAME
+            return _digits_to_name(self.fpe_encrypt(digits), first_names, last_names)
+        except ValueError:
+            # Not a first name, so encrypt it as a last name.
+            digits = NO_NAME + _index(last_names, name)
+            return _digits_to_name(self.fpe_encrypt(digits), last_names, last_names)
+
+    def _decrypt_name(self, name: str, first_names: list[str], last_names: list[str]) -> str:
+        """Undo ``_encrypt_name``."""
+        if " " in name and name not in first_names:
+            words = name.split()
+            digits = _index(first_names, words[0]) + "".join(_index(last_names, w) for w in words[1:])
+            return _digits_to_name(self.fpe_decrypt(digits), first_names, last_names, skip_no_name=True)
+        digits = _index(first_names, name) + NO_NAME
+        return _digits_to_name(self.fpe_decrypt(digits), first_names, last_names)
+
+    def _name_alphabets(self, inputs: list[list[str]]) -> tuple[list[str], list[str]]:
+        """Build the first- and last-name lists that FPE indexes into.
+
+        Every input name must be in its list, so the inputs are moved to the end
+        of the dataset names. The lists therefore depend on the inputs, which is
+        why ``decrypt_names`` reuses the ones saved by ``encrypt``.
+        """
+        first_words, last_words = _name_words([name for text_names in inputs for name in text_names])
+        dataset = self._load_names_dataset()
+        return _make_alphabet(dataset["first_names"], first_words), _make_alphabet(dataset["last_names"], last_words)
+
+    def _load_names_dataset(self) -> dict[str, list[str]]:
+        """Load the dataset of first and last names once, generating it if missing."""
+        if self._names_dataset is not None:
+            return self._names_dataset
+        candidates = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "names_dataset.json"),
+            "preempt/names_dataset.json",
+            f"{os.getcwd()}/names_dataset.json",
+        ]
+        path = next((p for p in candidates if os.path.exists(p)), None)
+        if path is None:
+            path = candidates[-1]
+            print("Names dataset not found. Generating...")
+            make_names_dataset(path)
+            print(f"Saved at {path}")
+        self._names_dataset = load_data(path)
+        return self._names_dataset
+
+    # --- Money ----------------------------------------------------------------
+
+    def encrypt_money(
+        self, inputs: list[list[str]], use_fpe: bool = True, epsilon: Optional[float] = None
+    ) -> list[dict[str, Optional[str]]]:
+        """Map each amount to an FPE-encrypted or m-LDP-noised amount, per text.
+
+        Amounts that can't be parsed map to None.
+        """
+        mappings = []
+        for amounts in inputs:
+            fakes: dict[str, Optional[str]] = {}
+            for amount in amounts:
+                if amount in fakes:
+                    continue
+                digits = amount.replace(",", "")
+                try:
+                    if use_fpe:
+                        fakes[amount] = self.fpe_encrypt(MONEY_FPE_PREFIX + digits)
+                    else:
+                        value = int(float(digits))
+                        fakes[amount] = str(self.m_epsilon(value, *_money_bounds(value), epsilon))
+                except (ValueError, TypeError):
+                    fakes[amount] = None
+            mappings.append(fakes)
+        return mappings
+
+    def decrypt_money(
+        self, inputs: list[str], extracted: Optional[list[list[str]]], use_fpe: bool = True, use_cache: bool = False
+    ) -> list[str]:
+        """Replace fake amounts in ``inputs`` with the originals."""
+        decrypted = []
+        for i, line in enumerate(inputs):
+            restored = line
+            fake_to_original = {fake: original for original, fake in self.entity_mapping[i].items()}
+            for fake in self._decrypt_targets(i, extracted, use_cache):
+                if not use_fpe:
+                    restored = _replace_first_word(restored, fake, fake_to_original[fake])
+                elif len(fake) >= len(MONEY_FPE_PREFIX):
+                    original = self.fpe_decrypt(fake)[len(MONEY_FPE_PREFIX) :]
+                    if fake in restored:
+                        restored = restored.replace(fake, original)
+                    else:  # e.g. "1.250" was written as "1,250"
+                        restored = restored.replace(fake.replace(".", ","), original.replace(".", ","))
+            decrypted.append(restored)
+        return decrypted
+
+    # --- Age ------------------------------------------------------------------
+
+    def encrypt_age(self, inputs: list[list[str]], epsilon: Optional[float] = None) -> list[dict[str, Optional[str]]]:
+        """Map each age to an m-LDP-noised age in [10, 99], per text.
+
+        Ages that can't be parsed map to None.
+        """
+        mappings = []
+        for ages in inputs:
+            fakes: dict[str, Optional[str]] = {}
+            for age in ages:
+                if age in fakes:
+                    continue
+                try:
+                    fakes[age] = str(self.m_epsilon(int(age), 10, 99, epsilon))
+                except (ValueError, TypeError):
+                    fakes[age] = None
+            mappings.append(fakes)
+        return mappings
+
+    def decrypt_age(self, inputs: list[str]) -> list[str]:
+        """Restore ages saved by the last ``encrypt`` call."""
+        decrypted = []
+        for line, fakes in zip(inputs, self.entity_mapping):
+            restored = line
+            for original, fake in fakes.items():
+                if fake is not None:
+                    restored = _replace_first_word(restored, fake, original)
+            decrypted.append(restored)
+        return decrypted
+
+    # --- Building blocks ------------------------------------------------------
+
+    def fpe_encrypt(self, value: str) -> str:
+        """FPE-encrypt the digits of ``value``, keeping its punctuation."""
+        return _restore_format(self.cipher_fn.encrypt(_digits_only(value)), str(value))
+
+    def fpe_decrypt(self, value: str) -> str:
+        """Undo ``fpe_encrypt``."""
+        return _restore_format(self.cipher_fn.decrypt(_digits_only(value)), str(value))
+
+    def m_epsilon(self, x: int, n_lower: int, n_upper: int, epsilon: float, discretization_size: int = 100) -> int:
+        """Noise ``x`` with m-LDP: sample near ``x`` within [n_lower, n_upper].
+
+        Smaller ``epsilon`` means more noise.
+        """
+        n_lower, n_upper = int(n_lower), int(n_upper)
+        total_range = n_upper - n_lower
+        x_scaled = (x - n_lower) * discretization_size / total_range
+        p = np.exp(-np.abs(x_scaled - np.arange(discretization_size)) * epsilon / 2)
+        sample = self.rng.choice(discretization_size, 1, p=p / p.sum())[0]
+        return int(sample * total_range / discretization_size + n_lower)
+
+    def _decrypt_targets(self, i: int, extracted: Optional[list[list[str]]], use_cache: bool) -> list[str]:
+        """Fakes to undo in text ``i``: detected, or saved by ``encrypt``."""
+        if extracted is None or use_cache:
+            return [fake for fake in dict.fromkeys(self.entity_mapping[i].values()) if fake is not None]
+        return extracted[i]
+
+
+def _nfc(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+def _index(alphabet: list[str], name: str) -> str:
+    """Return ``name``'s position in ``alphabet`` as 3 digits, e.g. "007"."""
+    i = check(alphabet, name)
+    if i is None:
+        raise ValueError(f"{name!r} is not in the names alphabet.")
+    return str(i).zfill(DIGITS_PER_NAME)
+
+
+def _digits_to_name(digits: str, first_names: list[str], last_names: list[str], skip_no_name: bool = False) -> str:
+    """Turn 3-digit indexes into a name: a first name, then last names."""
+    chunks = [digits[i : i + DIGITS_PER_NAME] for i in range(0, len(digits), DIGITS_PER_NAME)]
+    words = [first_names[int(chunks[0])]]
+    words += [last_names[int(c)] for c in chunks[1:] if not (skip_no_name and c == NO_NAME)]
+    return " ".join(words)
+
+
+def _name_words(all_names: list[str]) -> tuple[list[str], list[str]]:
+    """Split names into first words and the remaining words of full names."""
+    first_words = [name.split()[0] if " " in name else name for name in all_names]
+    last_words = [word for name in all_names if " " in name for word in name.split()[1:]]
+    return first_words, last_words
+
+
+def _make_alphabet(dataset_names: list[str], input_names: list[str]) -> list[str]:
+    """Return 1000 single-word names that include every input name, near the end."""
+    alphabet = [name for name in dataset_names if " " not in name]
+    for name in input_names:
+        if name in alphabet:
+            alphabet.remove(name)
+    alphabet = alphabet[:ALPHABET_SIZE]
+    return alphabet[: min(-len(input_names) - 1, -2)] + list(input_names) + [alphabet[-1]]
+
+
+def _money_bounds(amount: int) -> tuple[int, int]:
+    """m-LDP noise range for an amount."""
+    if amount == 1:
+        return 1, 2
+    if amount < 100:
+        return 2, 1000
+    if amount < 1000:
+        return 100, 10000
+    return 1000, 10000
+
+
+def _digits_only(value: str) -> str:
+    return re.sub(r"[$,. ]", "", str(value))
+
+
+def _restore_format(digits: str, reference: str) -> str:
+    """Put the non-digit characters of ``reference`` back into ``digits``."""
+    if len(digits) != len(reference):
+        for i, char in enumerate(reference):
+            if not char.isdigit():
+                digits = digits[:i] + char + digits[i:]
+    return digits
+
+
+def _replace_first_word(text: str, old: str, new: str) -> str:
+    """Replace the first whole-word occurrence of ``old`` in ``text``."""
+    return re.sub(r"\b" + re.escape(old) + r"\b", new, text, count=1)

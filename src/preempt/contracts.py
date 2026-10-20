@@ -1,4 +1,4 @@
-"""Span, recognizer, and anonymization types shared by the pipeline."""
+"""Span and recognizer types shared by the pipeline."""
 
 from dataclasses import dataclass
 from typing import Protocol
@@ -47,31 +47,3 @@ class Recognizer(Protocol):
     def recognize(self, text: str) -> list[EntitySpan]:
         """Return exact character spans found in text."""
         ...
-
-
-@dataclass(frozen=True)
-class AnonymizationContext:
-    """Tenant and session that own a mapping."""
-
-    tenant_id: str
-    session_id: str
-
-
-@dataclass(frozen=True)
-class Replacement:
-    """One substitution applied to the original text."""
-
-    start: int
-    end: int
-    text: str
-    replacement: str
-    label: str
-
-
-@dataclass
-class AnonymizationResult:
-    """Protected text plus the spans and replacements that produced it."""
-
-    text: str
-    spans: list[EntitySpan]
-    replacements: list[Replacement]

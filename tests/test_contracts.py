@@ -4,10 +4,7 @@ import pytest
 
 from preempt.bio import IGNORE_TAG_ID, TAG_TO_ID, spans_from_tags, tags_from_spans
 from preempt.contracts import (
-    AnonymizationContext,
-    AnonymizationResult,
     EntitySpan,
-    Replacement,
     validate_span,
 )
 from preempt.legacy import LegacyNERShim
@@ -130,15 +127,3 @@ def test_shim_rejects_unknown_entity_type() -> None:
 
     with pytest.raises(ValueError, match="unsupported entity type"):
         LegacyNERShim(_EmptyRecognizer()).extract(["Ben"], entity_type="Email")
-
-
-def test_anonymization_result_keeps_span_and_replacement() -> None:
-    """The result type carries the original span and the text written in its place."""
-    span = EntitySpan(0, 3, "Ben", "NAME", 1.0, "test")
-    replacement = Replacement(0, 3, "Ben", "Alex", "NAME")
-    result = AnonymizationResult("Alex paid.", [span], [replacement])
-    context = AnonymizationContext(tenant_id="tenant", session_id="session")
-    assert result.text == "Alex paid."
-    assert result.spans[0].text == "Ben"
-    assert result.replacements[0].replacement == "Alex"
-    assert context.tenant_id == "tenant"

@@ -25,6 +25,59 @@ def test_names_fpe_round_trip() -> None:
     assert sanitizer.decrypt(encrypted, entity="Name", use_cache=True) == texts
 
 
+def _listed_names(n: int) -> list[str]:
+    """``n`` full names whose words are all in the fixed name lists."""
+    sanitizer = Sanitizer(None)
+    sanitizer._load_name_lists()
+    first, last = sanitizer._name_lists["first"], sanitizer._name_lists["last"]
+    return [f"{first[i * 37]} {last[i * 53]}" for i in range(n)]
+
+
+def test_names_differ_and_are_stable_across_calls() -> None:
+    """Different names get different surrogates, the same in any call."""
+    sanitizer = Sanitizer(None)
+    names = _listed_names(5) + ["Wei Zhang", "Yasi Gholami"]
+    alone = {n: sanitizer.encrypt_names([[n]])[0][0][n] for n in names}
+    batched = sanitizer.encrypt_names([[n] for n in reversed(names)])[0]
+
+    assert len(set(alone.values())) == len(names)
+    assert all(alone[n] == m[n] for n, m in zip(reversed(names), batched))
+    assert all(alone[n] != n for n in names)
+
+
+def test_partial_mentions_match_the_full_name() -> None:
+    """A lone first or last name maps to the matching word of the full surrogate."""
+    full = _listed_names(1)[0]
+    first, last = full.split()
+    fakes = Sanitizer(None).encrypt_names([[full, first, last]])[0][0]
+
+    assert fakes[full] == f"{fakes[first]} {fakes[last]}"
+    assert len(fakes[first].split()) == 1
+
+
+def test_listed_names_decrypt_with_the_key_alone() -> None:
+    """A fresh Sanitizer with the same key restores names from the fixed lists."""
+    full = _listed_names(1)[0]
+    texts = [f"{full} called."]
+    encrypted, _ = Sanitizer(FixedNER([[full]])).encrypt(texts, entity="Name")
+
+    fresh = Sanitizer(None)
+    fake = encrypted[0].removesuffix(" called.")
+    assert fresh.decrypt(encrypted, entity="Name", extracted=[[fake]]) == texts
+
+
+def test_unlisted_names_round_trip_without_collisions() -> None:
+    """Unlisted names get distinct surrogates in a text and decrypt via saved state."""
+    texts = ["Yasi Gholami met Roya and Hamid Aziz."]
+    sanitizer = Sanitizer(FixedNER([["Yasi Gholami", "Roya", "Hamid Aziz"]]))
+    encrypted, invalid = sanitizer.encrypt(texts, entity="Name")
+    fakes = sanitizer.entity_mapping[0]
+
+    assert not invalid
+    assert len({fakes["Yasi Gholami"], fakes["Roya"], fakes["Hamid Aziz"]}) == 3
+    assert sanitizer.decrypt(encrypted, entity="Name", use_cache=True) == texts
+
+
 def test_money_fpe_round_trip() -> None:
     """FPE amounts decrypt back to the originals."""
     texts = ["It costs $85000 a year.", "Pay 450 now and 12 later."]
@@ -56,7 +109,7 @@ def test_age_mldp_is_seeded_and_reversible() -> None:
     assert sanitizer.decrypt(encrypted, entity="Age") == texts
 
 
-def test_unparseable_values_are_reported() -> None:
+def test_unparsable_values_are_reported() -> None:
     """Values that can't be encrypted map to None and their text is flagged."""
     sanitizer = Sanitizer(FixedNER([["fifty"]]))
     _, invalid = sanitizer.encrypt(["He is fifty."], entity="Age")

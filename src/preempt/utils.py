@@ -54,6 +54,7 @@ def make_names_dataset(save_path: str) -> None:
             temp.append(first_names[i])
 
     first_names = temp[:]
+    temp = []
     for i in range(len(last_names)):
         flag = 0
         for rfn in remove_lns:

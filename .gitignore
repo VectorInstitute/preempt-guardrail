@@ -21,3 +21,7 @@ wheels/
 *.DS_Store
 site/
 runs/
+
+.env
+pii-bench/data/
+src/preempt/demo-old.ipynb

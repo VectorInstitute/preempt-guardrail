@@ -2435,15 +2435,24 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },
-    { name = "gliner" },
-    { name = "onnx" },
     { name = "onnxruntime" },
-    { name = "optimum", extra = ["onnxruntime"] },
-    { name = "optimum-onnx", extra = ["onnxruntime"] },
     { name = "pygments" },
     { name = "requests" },
     { name = "transformers" },
     { name = "urllib3" },
+]
+
+[package.optional-dependencies]
+export = [
+    { name = "onnx" },
+    { name = "optimum", extra = ["onnxruntime"] },
+    { name = "optimum-onnx", extra = ["onnxruntime"] },
+]
+gliner = [
+    { name = "gliner" },
+]
+torch = [
+    { name = "torch" },
 ]
 
 [package.dev-dependencies]
@@ -2489,16 +2498,18 @@ train = [
 [package.metadata]
 requires-dist = [
     { name = "filelock", specifier = "==4.0.5" },
-    { name = "gliner", specifier = ">=0.2.29" },
-    { name = "onnx", specifier = ">=1.23.2" },
+    { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2.29" },
+    { name = "onnx", marker = "extra == 'export'", specifier = ">=1.23.2" },
     { name = "onnxruntime", specifier = ">=1.30.0" },
-    { name = "optimum", extras = ["onnxruntime"], specifier = ">=2.1.0" },
-    { name = "optimum-onnx", extras = ["onnxruntime"], git = "https://github.com/huggingface/optimum-onnx.git?rev=46533fb66570021f52a39d77112b703762fdaada" },
+    { name = "optimum", extras = ["onnxruntime"], marker = "extra == 'export'", specifier = ">=2.1.0" },
+    { name = "optimum-onnx", extras = ["onnxruntime"], marker = "extra == 'export'", git = "https://github.com/huggingface/optimum-onnx.git?rev=46533fb66570021f52a39d77112b703762fdaada" },
     { name = "pygments", specifier = ">=2.20.0" },
     { name = "requests", specifier = ">=2.33.0" },
+    { name = "torch", marker = "extra == 'torch'", specifier = ">=2.6.0" },
     { name = "transformers", specifier = ">=5.18.0" },
     { name = "urllib3", specifier = "==2.8.0" },
 ]
+provides-extras = ["gliner", "torch", "export"]
 
 [package.metadata.requires-dev]
 dev = [

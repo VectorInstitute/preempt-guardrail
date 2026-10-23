@@ -2,8 +2,6 @@
 
 from collections.abc import Mapping
 
-from gliner import GLiNER
-
 from preempt.contracts import LABELS, EntitySpan
 
 
@@ -44,9 +42,19 @@ class GlinerRecognizer:
             Pipeline label to prompt text. Defaults to ``LABEL_PROMPTS``.
             Prompt strings must be unique. Returned spans use the keys.
 
+        Raises
+        ------
+        ImportError
+            The ``gliner`` extra is not installed.
+
         """
         self.threshold = threshold
         self.labels = _check_labels(LABEL_PROMPTS if labels is None else labels)
+        # Imported here so an install without the gliner extra does not need it.
+        try:
+            from gliner import GLiNER  # noqa: PLC0415
+        except ImportError as exc:
+            raise ImportError("GlinerRecognizer requires the gliner extra: uv sync --extra gliner") from exc
         self.model = GLiNER.from_pretrained(model_path)
         self.model.eval()
 

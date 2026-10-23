@@ -42,6 +42,19 @@ run:
 uv sync --no-group docs
 ```
 
+`uv sync` installs the ONNX runtime. Running an exported ONNX file does not
+need PyTorch or Optimum. The heavier recognizer and export stacks are extras:
+
+```bash
+uv sync --extra torch    # PyTorch DistilBERT backend
+uv sync --extra gliner   # zero-shot GLiNER recognizer
+uv sync --extra export   # export a checkpoint to ONNX
+```
+
+`DistilBertRecognizer` defaults to the PyTorch backend, so that constructor
+needs the `torch` extra. Pass `backend="onnx"` to run an exported graph with
+the default install.
+
 If you're coming from `poetry` then you'll notice that the virtual environment
 is actually stored in the project root folder and is by default named as `.venv`.
 The other important note is that while `poetry` uses a "flat" layout of the project,

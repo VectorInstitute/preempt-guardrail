@@ -13,12 +13,22 @@ dependencies = [
     "urllib3==2.8.0",
     "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
     "onnxruntime>=1.30.0",
+    "transformers>=5.18.0",
+]
+
+[project.optional-dependencies]
+gliner = [
+    "gliner>=0.2.29",
+]
+torch = [
+    "torch>=2.6.0",
+]
+# Export a checkpoint to ONNX. Inference uses onnxruntime and does not need these.
+export = [
     "optimum[onnxruntime]>=2.1.0",
     # Direct pin so uv uses the git revision below instead of PyPI 0.1.0.
     "optimum-onnx[onnxruntime]",
-    "transformers>=5.18.0",
     "onnx>=1.23.2",
-    "gliner>=0.2.29",
 ]
 
 [build-system]
@@ -108,6 +118,10 @@ module = [
     "datasets.*",
     "gliner",
     "gliner.*",
+    "huggingface_hub",
+    "huggingface_hub.*",
+    "onnxruntime",
+    "onnxruntime.*",
     "optimum",
     "optimum.*",
     "torch",

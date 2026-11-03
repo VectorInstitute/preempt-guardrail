@@ -2453,12 +2453,12 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },
-    { name = "json-repair" },
+    { name = "names" },
+    { name = "names-dataset" },
+    { name = "numpy" },
     { name = "onnxruntime" },
-    { name = "pydantic" },
+    { name = "pyfpe" },
     { name = "pygments" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
     { name = "requests" },
     { name = "transformers" },
     { name = "urllib3" },
@@ -2504,13 +2504,23 @@ docs = [
     { name = "pymdown-extensions" },
     { name = "tornado" },
 ]
+ner-bench = [
+    { name = "datasets" },
+    { name = "onnx" },
+    { name = "torch" },
+    { name = "tqdm" },
+]
+pii-bench = [
+    { name = "json-repair" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "torch" },
+]
 train = [
     { name = "accelerate" },
     { name = "datasets" },
-    { name = "names" },
-    { name = "names-dataset" },
     { name = "protobuf" },
-    { name = "pyfpe" },
     { name = "sentencepiece" },
     { name = "torch" },
     { name = "tqdm" },
@@ -2521,15 +2531,15 @@ train = [
 requires-dist = [
     { name = "filelock", specifier = "==4.0.5" },
     { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2.29" },
-    { name = "json-repair", specifier = ">=0.64.1" },
+    { name = "names", specifier = ">=0.3.0" },
+    { name = "names-dataset", specifier = ">=3.3.1" },
+    { name = "numpy", specifier = ">=2.0.0" },
     { name = "onnx", marker = "extra == 'export'", specifier = ">=1.23.2" },
     { name = "onnxruntime", specifier = ">=1.30.0" },
     { name = "optimum", extras = ["onnxruntime"], marker = "extra == 'export'", specifier = ">=2.1.0" },
     { name = "optimum-onnx", extras = ["onnxruntime"], marker = "extra == 'export'", git = "https://github.com/huggingface/optimum-onnx.git?rev=46533fb66570021f52a39d77112b703762fdaada" },
-    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pyfpe", specifier = ">=0.10.3" },
     { name = "pygments", specifier = ">=2.20.0" },
-    { name = "python-dotenv", specifier = ">=1.2.4" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.6.0" },
     { name = "transformers", specifier = ">=5.18.0" },
@@ -2564,13 +2574,23 @@ docs = [
     { name = "pymdown-extensions", specifier = ">=10.21.2" },
     { name = "tornado", specifier = ">=6.5.6" },
 ]
+ner-bench = [
+    { name = "datasets", specifier = ">=3.2.0" },
+    { name = "onnx", specifier = ">=1.23.2" },
+    { name = "torch", specifier = ">=2.6.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
+]
+pii-bench = [
+    { name = "json-repair", specifier = ">=0.64.1" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "torch", specifier = ">=2.6.0" },
+]
 train = [
     { name = "accelerate", specifier = ">=1.1.0" },
     { name = "datasets", specifier = ">=3.2.0" },
-    { name = "names", specifier = ">=0.3.0" },
-    { name = "names-dataset", specifier = ">=3.3.1" },
     { name = "protobuf", specifier = ">=5.29.4" },
-    { name = "pyfpe", specifier = ">=0.10.3" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "torch", specifier = ">=2.6.0" },
     { name = "tqdm", specifier = ">=4.67.1" },

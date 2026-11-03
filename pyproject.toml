@@ -9,15 +9,15 @@ repository = "https://github.com/VectorInstitute/preempt-guardrail"
 requires-python = ">=3.12"
 dependencies = [
     "filelock==4.0.5",
-    "requests>=2.33.0", # Pinning version to address vulnerability CVE-2026-25645
-    "urllib3==2.8.0",
-    "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
+    "names>=0.3.0",
+    "names-dataset>=3.3.1",
+    "numpy>=2.0.0",
     "onnxruntime>=1.30.0",
+    "pyfpe>=0.10.3",
+    "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
+    "requests>=2.33.0", # Pinning version to address vulnerability CVE-2026-25645
     "transformers>=5.18.0",
-    "pydantic>=2.7",
-    "json-repair>=0.64.1",
-    "pyyaml>=6.0.3",
-    "python-dotenv>=1.2.4",
+    "urllib3==2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -69,18 +69,30 @@ docs = [
     "ipython>=8.31.0",
     "tornado>=6.5.6", # Pinning version to address vulnerability CVE-2026-49854
 ]
-
+# Branch: feat/training
 train = [
     "accelerate>=1.1.0",
     "datasets>=3.2.0",
-    "names>=0.3.0",
-    "names-dataset>=3.3.1",
     "protobuf>=5.29.4",
-    "pyfpe>=0.10.3",
     "sentencepiece>=0.2.0",
     "torch>=2.6.0",
     "tqdm>=4.67.1",
     "transformers>=4.51.3",
+]
+# Branch: feat/ner-bench
+ner-bench = [
+    "datasets>=3.2.0",
+    "onnx>=1.23.2",
+    "torch>=2.6.0",
+    "tqdm>=4.67.1",
+]
+# Branch: feat/pii-bench (pii-bench/)
+pii-bench = [
+    "json-repair>=0.64.1",
+    "pydantic>=2.7",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "torch>=2.6.0",
 ]
 
 # Default dependency groups to be installed

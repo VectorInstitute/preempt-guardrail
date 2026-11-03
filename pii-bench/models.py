@@ -38,6 +38,10 @@ class Substitution(BaseModel):
     reversible: bool
 
 
+# How a task's output depends on the concrete values of its PII slots:
+# - "incidental": PII is background context/labels; task quality does not depend on exact values.
+# - "semantic": Task reasoning or final answer directly depends on the numerical/semantic PII values.
+# - "mixed": Combines both (some slots drive reasoning/calculation, others are incidental context).
 PiiDependency = Literal["incidental", "semantic", "mixed"]
 
 
@@ -56,7 +60,9 @@ class PromptTemplate(BaseModel):
     pii_dependency: PiiDependency
     verifiable: bool
     text: str
-    slots: list[EntityType]
+    # Placeholder tokens, including repeats such as MONEY_2. The label is the
+    # part before the underscore; the suffix is a separate entity.
+    slots: list[str]
     notes: str = ""
 
 
@@ -67,8 +73,8 @@ class PiiSpan(BaseModel):
     start: int
     end: int
     text: str
-    #  it says which real-world entity a span refers to. If a template mentions {NAME}/
-    #  twice, both spans get the same entity_id (name-1)
+    # Which real-world entity a span refers to. {NAME} twice is name-1 both
+    # times. {NAME_2} is a different person, name-2.
     entity_id: str
     value: float | None = None
     currency: str | None = None

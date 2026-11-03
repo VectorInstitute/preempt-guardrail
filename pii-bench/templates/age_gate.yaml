@@ -1,0 +1,36 @@
+templates:
+- id: age_gate-000
+  task_family: age_gate
+  task_type: eligibility
+  pii_dependency: semantic
+  verifiable: true
+  text: 'A brokerage will open an account only for someone who is at least 18. {NAME}
+    is {AGE}. Does {NAME} meet that age requirement? End your answer with a line:
+    FINAL_ANSWER: <ELIGIBLE or NOT_ELIGIBLE>.'
+  slots:
+  - NAME
+  - AGE
+  notes: stated cutoff of 18
+- id: age_gate-001
+  task_family: age_gate
+  task_type: eligibility
+  pii_dependency: semantic
+  verifiable: true
+  text: 'The rental company only rents cars to drivers who are 21 or older. {NAME}
+    is {AGE} years old. Is {NAME} eligible to rent? End your answer with a line:
+    FINAL_ANSWER: <ELIGIBLE or NOT_ELIGIBLE>.'
+  slots:
+  - NAME
+  - AGE
+  notes: stated cutoff of 21
+- id: age_gate-002
+  task_family: age_gate
+  task_type: eligibility
+  pii_dependency: semantic
+  verifiable: true
+  text: 'Medicare eligibility here starts at age 65. {NAME} is {AGE}. Is {NAME} old
+    enough? End your answer with a line: FINAL_ANSWER: <ELIGIBLE or NOT_ELIGIBLE>.'
+  slots:
+  - NAME
+  - AGE
+  notes: stated cutoff of 65

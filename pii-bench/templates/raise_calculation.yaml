@@ -1,0 +1,40 @@
+templates:
+- id: raise_calculation-000
+  task_family: raise_calculation
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: '{NAME} currently earns {MONEY} a year and was offered {MONEY_2} more per
+    year. What percent raise is that? End your answer with a line: FINAL_ANSWER:
+    <the percent as a number, not a fraction>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: percent increase from a dollar raise
+- id: raise_calculation-001
+  task_family: raise_calculation
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: 'Please compute {NAME}''s new annual salary. They make {MONEY} now, and the
+    raise is {MONEY_2} a year. End your answer with a line: FINAL_ANSWER: <the new
+    annual salary in dollars>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: new salary is current salary plus the raise
+- id: raise_calculation-002
+  task_family: raise_calculation
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: '{NAME} wants to know the size of a raise. Current pay is {MONEY}, and the
+    extra pay would be {MONEY_2} each year. By what percent would pay increase? End
+    your answer with a line: FINAL_ANSWER: <the percent as a number, not a fraction>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: percent increase, different wording

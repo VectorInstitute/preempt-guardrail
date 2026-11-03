@@ -1,0 +1,41 @@
+templates:
+- id: general_request-000
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Explain compound interest in plain language for {NAME} to read. {NAME} is
+    {AGE} and has {MONEY} saved. Give the general idea only. Do not calculate a balance
+    from that amount, and do not tailor the explanation to that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: general explanation; age and savings are context only
+- id: general_request-001
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Write a short checklist of questions to ask before accepting a job offer.
+    This is for {NAME}, who is {AGE} and currently earns {MONEY}. Keep the checklist
+    general. Do not compute anything from the current pay or give age-specific advice.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: general checklist; pay and age are context only
+- id: general_request-002
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: '{NAME} wants a plain-language explanation of how to read a retirement account
+    statement. {NAME} is {AGE} and the statement shows {MONEY}. Explain the usual
+    sections of a statement. Do not project that balance or adjust the explanation
+    for that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: general statement walkthrough; balance and age are context only

@@ -12,6 +12,7 @@ import re
 # Allowed labels per task family. Families not listed are parsed as numbers.
 ANSWER_LABELS: dict[str, frozenset[str]] = {
     "retirement_eligibility": frozenset({"ELIGIBLE", "NOT_ELIGIBLE"}),
+    "age_gate": frozenset({"ELIGIBLE", "NOT_ELIGIBLE"}),
 }
 
 _FINAL_RE = re.compile(r"FINAL[_ ]ANSWER\W*?:\s*([^\n]+)", re.IGNORECASE)

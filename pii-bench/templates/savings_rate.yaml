@@ -1,0 +1,40 @@
+templates:
+- id: savings_rate-000
+  task_family: savings_rate
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: '{NAME} earns {MONEY} a year and put {MONEY_2} into savings last year. What
+    percent of salary did they save? End your answer with a line: FINAL_ANSWER: <the
+    percent as a number, not a fraction>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: annual savings divided by salary
+- id: savings_rate-001
+  task_family: savings_rate
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: 'I''m checking {NAME}''s budget. Gross pay is {MONEY}, and the amount moved
+    to savings was {MONEY_2}. What savings rate is that, as a percent of salary?
+    End your answer with a line: FINAL_ANSWER: <the percent as a number, not a fraction>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: budget-check wording of the same ratio
+- id: savings_rate-002
+  task_family: savings_rate
+  task_type: calculation
+  pii_dependency: semantic
+  verifiable: true
+  text: '{NAME} told me their salary is {MONEY} and that they saved {MONEY_2} this
+    year. What percent of the salary is the amount saved? End your answer with a
+    line: FINAL_ANSWER: <the percent as a number, not a fraction>.'
+  slots:
+  - NAME
+  - MONEY
+  - MONEY_2
+  notes: first-person retelling of salary and savings

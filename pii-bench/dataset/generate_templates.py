@@ -9,9 +9,8 @@ it never invents a concrete name/age/amount, and it never decides where PII
 spans are -- those come for free from wherever the placeholders end up once
 slots are filled in later.
 
-This intentionally covers just two task families to start (one verifiable,
-one not), per the "start smaller, add step by step" plan. Add more entries
-to ``TASK_FAMILIES`` once these produce good templates end to end.
+Families already written by hand live in ``templates/``. Entries here describe
+the same catalog, including repeated slots such as ``{MONEY_2}``.
 
 Usage (from the ``pii-bench/`` directory)::
 
@@ -35,7 +34,7 @@ import yaml
 from dotenv import load_dotenv
 
 from llm.clients import OpenAICompatibleClient, create_dataset_generator_client
-from models import PromptTemplate
+from models import PiiDependency, PromptTemplate
 
 
 logger = logging.getLogger(__name__)
@@ -50,14 +49,13 @@ class TaskFamily:
 
     name: str
     task_type: str
-    pii_dependency: str  # "incidental" | "semantic" | "mixed"
+    pii_dependency: PiiDependency  # "incidental" (context only) | "semantic" (value-dependent) | "mixed"
     verifiable: bool
     required_slots: tuple[str, ...]
     guidance: str
 
 
-# Start deliberately small: two families, one verifiable and one not,
-# together covering all three PII types (NAME, AGE, MONEY).
+# Hand-written YAML in templates/ is the dataset. This catalog matches it.
 TASK_FAMILIES: dict[str, TaskFamily] = {
     "retirement_eligibility": TaskFamily(
         name="retirement_eligibility",
@@ -91,6 +89,62 @@ TASK_FAMILIES: dict[str, TaskFamily] = {
             "good email does not depend on their exact values. Vary the "
             "scenario and tone across templates, but keep {NAME} and "
             "{MONEY} as the only placeholders, each used exactly once."
+        ),
+    ),
+    "general_request": TaskFamily(
+        name="general_request",
+        task_type="explanation",
+        pii_dependency="incidental",
+        verifiable=False,
+        required_slots=("NAME", "AGE", "MONEY"),
+        guidance=(
+            "A user asks for a general explanation or a general checklist. "
+            "{NAME}, {AGE}, and {MONEY} appear as context, and the prompt "
+            "explicitly says not to calculate anything from them and not to "
+            "tailor the answer to those exact values. No FINAL_ANSWER line."
+        ),
+    ),
+    "savings_rate": TaskFamily(
+        name="savings_rate",
+        task_type="calculation",
+        pii_dependency="semantic",
+        verifiable=True,
+        required_slots=("NAME", "MONEY", "MONEY_2"),
+        guidance=(
+            "A user asks what percent of {NAME}'s salary ({MONEY}) they saved, "
+            "given an amount saved ({MONEY_2}). {MONEY} is the salary and must "
+            "appear before {MONEY_2}, which is the savings amount and must be "
+            "a different placeholder. The prompt must end with this literal "
+            'instruction, verbatim: "End your answer with a line: FINAL_ANSWER: '
+            '<the percent as a number, not a fraction>."'
+        ),
+    ),
+    "raise_calculation": TaskFamily(
+        name="raise_calculation",
+        task_type="calculation",
+        pii_dependency="semantic",
+        verifiable=True,
+        required_slots=("NAME", "MONEY", "MONEY_2"),
+        guidance=(
+            "A user asks about a raise for {NAME}: current salary is {MONEY} "
+            "and the raise is {MONEY_2} more per year. Ask either for the "
+            "percent increase or for the new annual salary. {MONEY} must appear "
+            "before {MONEY_2}. The prompt must end with this literal instruction, "
+            'verbatim: "End your answer with a line: FINAL_ANSWER: <the number>."'
+        ),
+    ),
+    "age_gate": TaskFamily(
+        name="age_gate",
+        task_type="eligibility",
+        pii_dependency="semantic",
+        verifiable=True,
+        required_slots=("NAME", "AGE"),
+        guidance=(
+            "A user asks whether {NAME}, who is {AGE}, meets a cutoff that the "
+            "prompt states explicitly: at least 18, at least 21, or at least 65. "
+            "One cutoff per template. The prompt must end with this literal "
+            'instruction, verbatim: "End your answer with a line: FINAL_ANSWER: '
+            '<ELIGIBLE or NOT_ELIGIBLE>."'
         ),
     ),
 }

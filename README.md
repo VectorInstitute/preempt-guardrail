@@ -1,4 +1,4 @@
-# AI Engineering template (with uv)
+# Preempt-Guardrail
 
 ----------------------------------------------------------------------------------------
 
@@ -9,10 +9,19 @@
 [![codecov](https://codecov.io/github/VectorInstitute/aieng-template-uv/graph/badge.svg?token=83MYFZ3UPA)](https://codecov.io/github/VectorInstitute/aieng-template-uv)
 ![GitHub License](https://img.shields.io/github/license/VectorInstitute/aieng-template-uv)
 
-A template repo for AI Engineering projects (using ``python``) and ``uv``. This
-template is like our original AI Engineering [template](https://github.com/VectorInstitute/aieng-template),
-however, unlike how that template uses poetry, this one uses uv for dependency
-management (as well as packaging and publishing).
+Preempt-Guardrail is PII detractor, removing age, money, name values from the user prompt before passing it to the LLM API.
+
+For a usage example, see [`demo.ipynb`](src/preempt/demo.ipynb).
+
+## Key Branches
+
+The following branches serve dedicated training and benchmarking workflows and are kept separate from `main`, each with its own `uv` dependency group in `pyproject.toml`:
+
+| Branch | Dependency Group | Install Command | Purpose |
+| --- | --- | --- | --- |
+| `feat/training` | `train` | `uv sync --group train` | Training pipeline and scripts for fine-tuning the custom DistilBERT NER model for PII recognition (`NAME`, `AGE`, `MONEY`). |
+| `feat/ner-bench` | `ner-bench` | `uv sync --group ner-bench` | Benchmarking and evaluation suite for the DistilBERT NER recognizer (detection accuracy, quantization, and latency). |
+| `feat/pii-bench` | `pii-bench` | `uv sync --group pii-bench` | End-to-end downstream utility and privacy benchmark (`pii-bench/`), comparing LLM responses on original vs. sanitized prompts across $\epsilon$ values using verifiable tasks and LLM-as-a-judge. |
 
 ## 🧑🏿‍💻 Developing
 

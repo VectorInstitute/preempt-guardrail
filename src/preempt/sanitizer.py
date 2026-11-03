@@ -234,6 +234,7 @@ class Sanitizer:
     def _fallback_word(self, word: str, role: str, used: set[str]) -> str:
         """Pick a list name for an unlisted word by keyed hash, skipping ``used``."""
         names_list = self._name_lists[role]
+        # Handle collisions by incrementing the attempt number
         for attempt in itertools.count():
             digest = hashlib.sha256(f"{self._key}:{self._tweak}:{role}:{word}:{attempt}".encode()).digest()
             fake = names_list[int.from_bytes(digest[:8], "big") % len(names_list)]

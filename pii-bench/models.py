@@ -69,7 +69,7 @@ class PiiSpan(BaseModel):
     text: str
     #  it says which real-world entity a span refers to. If a template mentions {NAME}/
     #  twice, both spans get the same entity_id (name-1)
-    entity_id: str 
+    entity_id: str
     value: float | None = None
     currency: str | None = None
     surface_format: str | None = None
@@ -103,3 +103,68 @@ class SanitizeResult(BaseModel):
     oracle: bool = False
     latency_ms: float
     warnings: list[str] = Field(default_factory=list)
+
+
+class RunRecord(BaseModel):
+    """One pipeline result for one item, epsilon, and sanitizer draw."""
+
+    item_id: str
+    task_family: str
+    verifiable: bool
+    generator_model: str
+    generator_temperature: float
+    epsilon: float
+    draw: int
+    seed: int
+    original_prompt: str
+    sanitized_prompt: str
+    substitutions: list[Substitution]
+    sanitizer_warnings: list[str] = Field(default_factory=list)
+    response_a: str
+    response_a_prime: str
+    response_b_raw: str
+    response_b: str
+    answer_a: str | float | None = None
+    answer_a_prime: str | float | None = None
+    answer_b: str | float | None = None
+    parity_a_a_prime: bool | None = None
+    parity_a_b: bool | None = None
+
+
+JudgePair = Literal["A_B", "A_A_prime"]
+Served = Literal["yes", "no"]
+ServedConsensus = Literal["yes", "no", "mixed"]
+
+
+class JudgeVerdict(BaseModel):
+    """One ordering of a pair: a 1-5 score, equal service, and a short reason.
+
+    An ordering is which of the two answers is shown first. The labels stay on
+    their answers; only the position in the prompt changes.
+    """
+
+    overall_compatibility: int
+    equally_well_served: Served
+    reason: str
+
+
+class JudgeRecord(BaseModel):
+    """Both orderings of one comparison (A vs B, or A vs A').
+
+    ``forward`` is the canonical order: A then B, or A then A'. ``reverse`` is
+    that same pair with the two answers swapped. ``score_mean`` averages the
+    two 1-5 scores. ``served_consensus`` is ``yes`` or ``no`` when both
+    orderings agree, and ``mixed`` when one says equally well served and the
+    other does not.
+    """
+
+    item_id: str
+    task_family: str
+    epsilon: float
+    draw: int
+    pair: JudgePair
+    judge_model: str
+    forward: JudgeVerdict
+    reverse: JudgeVerdict
+    score_mean: float
+    served_consensus: ServedConsensus

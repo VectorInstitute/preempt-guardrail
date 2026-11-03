@@ -33,6 +33,7 @@ from preempt.sanitizer import Sanitizer as PreemptSanitizer
 _NER_ENTITIES: dict[EntityType, str] = {"NAME": "Name", "AGE": "Age", "MONEY": "Money"}
 
 # {(label, original text): fake text} for one text.
+# Example: {("NAME", "John Doe"): "Edward Smith"}
 Fakes = dict[tuple[str, str], str]
 
 
@@ -104,7 +105,11 @@ class PreemptSanitizerAdapter:
         start = time.perf_counter()
         gold = None
         if gold_spans is not None:
-            gold = [resolve_overlaps(s for s in spans if s.label in types) for spans in gold_spans]
+            gold = []
+            for spans in gold_spans:
+                filtered_spans = [s for s in spans if s.label in types]
+                gold.append(resolve_overlaps(filtered_spans))
+       
             for text, spans in zip(texts, gold):
                 for span in spans:
                     validate_span(text, span)

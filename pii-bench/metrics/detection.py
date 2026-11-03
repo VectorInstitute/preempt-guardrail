@@ -37,6 +37,7 @@ from sanitizers.text_utils import numeric_core
 from preempt.contracts import EntitySpan, Recognizer
 from preempt.distilbert_recognizer import DistilBertRecognizer
 from preempt.sanitizer import Sanitizer as PreemptSanitizer
+# from preempt.gliner_recognizer import GlinerRecognizer
 
 
 logger = logging.getLogger(__name__)
@@ -242,6 +243,7 @@ def main() -> None:
         backend=args.backend,
         onnx_file_name=args.onnx_file if args.backend == "onnx" else None,
     )
+    # recognizer = GlinerRecognizer()
     adapter = PreemptSanitizerAdapter(PreemptSanitizer(recognizer), recognizer)
 
     report, details = evaluate(items, recognizer, adapter, epsilon=args.epsilon, seed=args.seed)

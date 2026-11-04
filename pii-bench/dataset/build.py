@@ -8,7 +8,7 @@ the same rule applies to ``{AGE_2}`` and ``{MONEY_2}``.
 Usage (from the ``pii-bench/`` directory)::
 
     uv run --project .. python -m dataset.build
-    uv run --project .. python -m dataset.build --fills-per-template 10
+    uv run --project .. python -m dataset.build --fills-per-template 7
 """
 
 from __future__ import annotations
@@ -320,7 +320,7 @@ def main() -> None:
         type=Path,
         default=BENCH_DIR / config["paths"]["data_dir"] / "dataset.jsonl",
     )
-    parser.add_argument("--fills-per-template", type=int, default=5)
+    parser.add_argument("--fills-per-template", type=int, default=7)
     parser.add_argument("--seed", type=int, default=config["dataset"]["seed"])
     args = parser.parse_args()
 

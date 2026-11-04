@@ -35,3 +35,72 @@ templates:
   - NAME
   - MONEY
   notes: budget request, professional and justifying tone
+- id: email_drafting-003
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: Draft a short thank-you email from {NAME} to a colleague who covered their
+    shift. Mention that {NAME} is treating the team to coffee with a {MONEY} gift
+    card. Keep it warm and brief.
+  slots:
+  - NAME
+  - MONEY
+  notes: thank-you note; the amount is a gift card
+- id: email_drafting-004
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: Write a polite decline from {NAME} to a vendor. The quote was {MONEY}, which
+    is more than the team can spend. Keep the door open for a smaller proposal.
+  slots:
+  - NAME
+  - MONEY
+  notes: vendor decline
+- id: email_drafting-005
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: Help {NAME} email a landlord to confirm that the security deposit of {MONEY}
+    was received. Tone should be neutral and include a request for a written receipt.
+  slots:
+  - NAME
+  - MONEY
+  notes: deposit confirmation
+- id: email_drafting-006
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: Draft a two-sentence Slack message from {NAME} asking the group to chip in
+    for a farewell gift. The target budget is {MONEY}. Keep it casual.
+  slots:
+  - NAME
+  - MONEY
+  notes: casual chat message
+- id: email_drafting-007
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: Write a professional out-of-office reply for {NAME}. They are away and a
+    colleague is covering urgent items. A pending reimbursement of {MONEY} can wait
+    until they return. Do not invent dates.
+  slots:
+  - NAME
+  - MONEY
+  notes: out of office
+- id: email_drafting-008
+  task_family: email_drafting
+  task_type: drafting
+  pii_dependency: incidental
+  verifiable: false
+  text: '{NAME} needs a short email to a scholarship committee confirming they can
+    attend the interview. They will cover their own travel, about {MONEY}. Keep it
+    courteous and under 80 words.'
+  slots:
+  - NAME
+  - MONEY
+  notes: interview confirmation

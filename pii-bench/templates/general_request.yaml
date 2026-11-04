@@ -39,3 +39,158 @@ templates:
   - AGE
   - MONEY
   notes: general statement walkthrough; balance and age are context only
+- id: general_request-003
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Explain what an emergency fund is for {NAME}, who is {AGE} and earns {MONEY}.
+    Give the general idea and a few typical uses. Do not compute a target from that
+    income or give advice that depends on that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: emergency fund, general
+- id: general_request-004
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Write a beginner glossary of ten investing words for {NAME} to skim. {NAME}
+    is {AGE} and has {MONEY} in a savings account. Define the words in general terms.
+    Do not recommend a portfolio for that balance or that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: glossary
+- id: general_request-005
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: '{NAME} asked how to prepare for a performance review. They are {AGE} and
+    their current pay is {MONEY}. Give a general preparation checklist. Do not suggest
+    a number to ask for, and do not tailor the steps to that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: performance review checklist
+- id: general_request-006
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Describe how direct deposit works, in plain language, for {NAME}. Context
+    only: age {AGE}, paycheck {MONEY}. Do not calculate taxes or take-home pay.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: direct deposit explainer
+- id: general_request-007
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'List questions {NAME} could ask a doctor before a routine checkup. {NAME}
+    is {AGE}. They once paid {MONEY} for a visit. Keep the list general. Do not give
+    medical advice or discuss that bill.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: appointment questions, not medical advice
+- id: general_request-008
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Explain the difference between a debit card and a credit card for {NAME},
+    age {AGE}, who has {MONEY} in checking. Stay general. Do not advise for or against
+    either card based on that balance or age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: debit vs credit
+- id: general_request-009
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Turn this into a simple weekly planning routine for {NAME}. They are {AGE}
+    and set aside {MONEY} for groceries. Describe the routine in general steps. Do
+    not build a budget from that grocery figure.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: weekly planning routine
+- id: general_request-010
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'What does "net worth" mean? Explain it for {NAME}, who is {AGE} and mentioned
+    savings of {MONEY}. Use a generic example, not their figure, and do not estimate
+    their net worth.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: definition of net worth
+- id: general_request-011
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Write a short guide on how to compare two rental listings. {NAME}, age {AGE},
+    is reading listings and has a moving budget of {MONEY}. Keep the guide general.
+    Do not say which listing they can afford.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: rental comparison guide
+- id: general_request-012
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Explain what a W-2 is and which boxes people usually look at. This is for
+    {NAME}, age {AGE}, whose last refund was {MONEY}. Do not interpret a refund of
+    that size and do not give filing advice tied to that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: W-2 explainer
+- id: general_request-013
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Give {NAME} a general packing checklist for a week-long work trip. They are
+    {AGE} and plan to spend about {MONEY} on the trip. Do not itemize that budget
+    and do not adjust the list for that age.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: packing checklist
+- id: general_request-014
+  task_family: general_request
+  task_type: explanation
+  pii_dependency: incidental
+  verifiable: false
+  text: 'Describe how to read a utility bill, section by section, for {NAME}. They
+    are {AGE} and last month''s bill was {MONEY}. Explain the usual lines. Do not
+    judge whether that bill is high or low.'
+  slots:
+  - NAME
+  - AGE
+  - MONEY
+  notes: utility bill walkthrough

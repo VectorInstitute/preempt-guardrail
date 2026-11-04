@@ -3,7 +3,7 @@ sanitizer:
   # python_function: module + callable path, e.g. "my_pkg.sanitizer:sanitize"
   # rest: url, auth header env var, request/response field names
   # cli: command template, stdin/stdout format
-  epsilons: [0.05, 0.1, 0.2, 0.5, 1, 2]   # sweep values (CONFIG; replace with the sanitizer's real parameter range)
+  epsilons: [0.2, 0.5, 1]   # sweep for the 252-prompt run; 0.1 matched 0.2 on the pilot
   draws_per_prompt: 3           # k
   ablations: [all, names_only, age_only, money_only]
 llm:
@@ -13,7 +13,7 @@ llm:
   judge_temperature: 0
   dataset_gen_model: "claude-sonnet-5-5"   # model used to help write templates / paraphrases
 dataset:
-  n_prompts: 350
+  n_prompts: 252
   seed: 1234
   currencies: [USD, CAD, EUR, JPY, GBP]
 paths:

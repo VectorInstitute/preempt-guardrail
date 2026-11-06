@@ -39,6 +39,7 @@ Constraints and history for later sessions. Sources: `README.md`, `pii-bench/rep
 - Package manager is `uv`. The environment is `.venv` at the repo root. Layout is `src`, which differs from Poetry's flat layout.
 - `typos` splits on hyphens, so `look-alikes` is reported as `alikes`. `Mata` in `demo.ipynb` is a generated surname. Both are allowlisted in `typos.toml` under `extend-ignore-words-re`. A new notebook run can introduce another surname that the checker rejects.
 - `uv sync` installs the ONNX runtime. An exported ONNX file runs without PyTorch or Optimum.
+- `pyfpe` 0.10.3 requires `pycryptodome==3.10.1`. pip-audit flags that release (PYSEC-2026-1811, fixed in 3.19.1). `tool.uv.override-dependencies` lifts it. The FF3 round-trip tests pass on pycryptodome 4.x.
 - Extras: `uv sync --extra torch`, `--extra gliner`, `--extra export`.
 - Dev and test dependencies: `uv sync --dev`. Drop a group with `uv sync --no-group docs`.
 - Branch stacks, checked out on that branch: `uv sync --group train`, `--group ner-bench`, or `--group pii-bench`.

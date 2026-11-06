@@ -16,9 +16,11 @@ https://github.com/VectorInstitute/preempt-guardrail/issues/11.
 
 import hashlib
 import itertools
+import logging
 import os
 import random
 import re
+import secrets
 import unicodedata
 from typing import Any, Optional
 
@@ -26,8 +28,11 @@ import names
 import numpy as np
 from pyfpe_ff3 import FF3Cipher
 
+from preempt.legacy import LegacyNERShim
 from preempt.utils import load_data, make_names_dataset
 
+
+logger = logging.getLogger(__name__)
 
 # Size of each fixed name list. Raising it needs a names dataset with at least
 # this many first names and this many (distinct) last names.
@@ -36,18 +41,32 @@ ALPHABET_SIZE = 1000
 MONEY_FPE_PREFIX = "999999"
 
 
+def generate_key() -> tuple[str, str]:
+    """Return a random hex ``(key, tweak)``: a 256-bit key and a 64-bit tweak."""
+    return secrets.token_hex(32), secrets.token_hex(8)
+
+
 class Sanitizer:
     """Encrypt and decrypt names, money, and ages detected by ``ner_model``."""
 
     def __init__(
         self,
         ner_model: Any,
-        key: str = "EF4359D8D580AA4F7F036D6F04FC6A94",
-        tweak: str = "D8E7920AFA330A73",
+        key: str,
+        tweak: str,
         seed: Optional[int] = None,
     ):
+        """Set up the FF3 cipher and name permutations for ``key`` and ``tweak``.
+
+        Anyone with ``key`` and ``tweak`` can reverse FPE names and amounts,
+        so keep them secret. Use ``generate_key`` to make a fresh pair.
+        ``ner_model`` is either an object with ``extract`` or a ``Recognizer``,
+        which is wrapped in ``LegacyNERShim``.
+        """
         self.cipher_fn = FF3Cipher(key, tweak, allow_small_domain=True, radix=10)
         self._key, self._tweak = key, tweak
+        if hasattr(ner_model, "recognize") and not hasattr(ner_model, "extract"):
+            ner_model = LegacyNERShim(ner_model)
         self.ner = ner_model
         # Set by encrypt(), read by decrypt().
         self.entity_mapping: list[dict[str, Optional[str]]] = []  # {original: fake} per text
@@ -277,9 +296,8 @@ class Sanitizer:
         path = next((p for p in candidates if os.path.exists(p)), None)
         if path is None:
             path = candidates[-1]
-            print("Names dataset not found. Generating...")
+            logger.info("Names dataset not found. Generating %s", path)
             make_names_dataset(path)
-            print(f"Saved at {path}")
         self._names_dataset = load_data(path)
         return self._names_dataset
 

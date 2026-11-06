@@ -25,3 +25,5 @@ runs/
 .env
 pii-bench/data/
 src/preempt/demo-old.ipynb
+# Local training downloads. Not used by the library.
+training-data/

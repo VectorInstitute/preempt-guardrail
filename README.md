@@ -13,6 +13,32 @@ Preempt-Guardrail is PII detractor, removing age, money, name values from the us
 
 For a usage example, see [`demo.ipynb`](src/preempt/demo.ipynb).
 
+## Configuration
+
+The demo reads the model path and the cipher key from the environment. Copy the example and fill it in:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `PREEMPT_MODEL_PATH` | Hugging Face model id, or a local directory that contains `model.onnx` |
+| `PREEMPT_KEY` | Hex FF3 key: 32, 48, or 64 hex characters (128, 192, or 256 bits) |
+| `PREEMPT_TWEAK` | Hex FF3 tweak: 16 hex characters (64 bits) |
+
+`.env` is gitignored. Anyone with the key and tweak can reverse FPE names and amounts. Generate a pair with:
+
+```bash
+uv run python -c "from preempt import generate_key; print(*generate_key())"
+```
+
+Run the notebook with those values:
+
+```bash
+uv run --env-file .env --with nbconvert --with ipywidgets jupyter nbconvert --execute --inplace src/preempt/demo.ipynb
+```
+
 ## Key Branches
 
 The following branches serve dedicated training and benchmarking workflows and are kept separate from `main`, each with its own `uv` dependency group in `pyproject.toml`:

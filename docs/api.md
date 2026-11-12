@@ -1,22 +1,57 @@
 # API Reference
 
-## Top Level Module
+## Package
 
-::: aieng_template_uv
+::: preempt
     options:
       show_root_heading: true
       show_root_full_path: true
 
-## Foo Module
+## DistilBERT Recognizer
 
-::: aieng_template_uv.foo
+::: preempt.distilbert_recognizer
     options:
       show_root_heading: true
       show_root_full_path: true
 
-## Bar Module
+## Sanitizer
 
-::: aieng_template_uv.bar
+::: preempt.sanitizer
+    options:
+      show_root_heading: true
+      show_root_full_path: true
+
+## Contracts
+
+::: preempt.contracts
+    options:
+      show_root_heading: true
+      show_root_full_path: true
+
+## Spans
+
+::: preempt.spans
+    options:
+      show_root_heading: true
+      show_root_full_path: true
+
+## BIO Tags
+
+::: preempt.bio
+    options:
+      show_root_heading: true
+      show_root_full_path: true
+
+## Legacy Adapter
+
+::: preempt.legacy
+    options:
+      show_root_heading: true
+      show_root_full_path: true
+
+## Name Lists
+
+::: preempt.utils
     options:
       show_root_heading: true
       show_root_full_path: true

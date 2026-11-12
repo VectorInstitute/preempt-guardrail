@@ -1,0 +1,12 @@
+# Retrofit Project Rules & Guidelines
+
+## 1. Architectural Integrity
+- The project follows a modular structure. Do not introduce cross-layer or sideways imports in new or refactored code.
+- Always check existing module boundaries before adding new dependencies.
+
+## 2. Change Scope & Safety
+- Keep PRs/changes small and targeted.
+- Before finishing any task, ensure existing tests pass and types are valid.
+
+## 3. Session Continuity
+- At the end of a session or a major bug fix, document key decisions, quirks, or edge cases in `docs/LESSONS.md`.

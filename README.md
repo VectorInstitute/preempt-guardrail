@@ -1,4 +1,4 @@
-# AI Engineering template (with uv)
+# Preempt-Guardrail
 
 ----------------------------------------------------------------------------------------
 
@@ -9,10 +9,45 @@
 [![codecov](https://codecov.io/github/VectorInstitute/aieng-template-uv/graph/badge.svg?token=83MYFZ3UPA)](https://codecov.io/github/VectorInstitute/aieng-template-uv)
 ![GitHub License](https://img.shields.io/github/license/VectorInstitute/aieng-template-uv)
 
-A template repo for AI Engineering projects (using ``python``) and ``uv``. This
-template is like our original AI Engineering [template](https://github.com/VectorInstitute/aieng-template),
-however, unlike how that template uses poetry, this one uses uv for dependency
-management (as well as packaging and publishing).
+Preempt-Guardrail is PII detractor, removing age, money, name values from the user prompt before passing it to the LLM API.
+
+For a usage example, see [`demo.ipynb`](src/preempt/demo.ipynb).
+
+## Configuration
+
+The demo reads the model path and the cipher key from the environment. Copy the example and fill it in:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `PREEMPT_MODEL_PATH` | Hugging Face model id, or a local directory that contains `model.onnx` |
+| `PREEMPT_KEY` | Hex FF3 key: 32, 48, or 64 hex characters (128, 192, or 256 bits) |
+| `PREEMPT_TWEAK` | Hex FF3 tweak: 16 hex characters (64 bits) |
+
+`.env` is gitignored. Anyone with the key and tweak can reverse FPE names and amounts. Generate a pair with:
+
+```bash
+uv run python -c "from preempt import generate_key; print(*generate_key())"
+```
+
+Run the notebook with those values:
+
+```bash
+uv run --env-file .env --with nbconvert --with ipywidgets jupyter nbconvert --execute --inplace src/preempt/demo.ipynb
+```
+
+## Key Branches
+
+The following branches serve dedicated training and benchmarking workflows and are kept separate from `main`, each with its own `uv` dependency group in `pyproject.toml`:
+
+| Branch | Dependency Group | Install Command | Purpose |
+| --- | --- | --- | --- |
+| `feat/training` | `train` | `uv sync --group train` | Training pipeline and scripts for fine-tuning the custom DistilBERT NER model for PII recognition (`NAME`, `AGE`, `MONEY`). |
+| `feat/ner-bench` | `ner-bench` | `uv sync --group ner-bench` | Benchmarking and evaluation suite for the DistilBERT NER recognizer (detection accuracy, quantization, and latency). |
+| `feat/pii-bench` | `pii-bench` | `uv sync --group pii-bench` | End-to-end downstream utility and privacy benchmark (`pii-bench/`), comparing LLM responses on original vs. sanitized prompts across $\epsilon$ values using verifiable tasks and LLM-as-a-judge. |
 
 ## 🧑🏿‍💻 Developing
 
@@ -41,6 +76,19 @@ run:
 ```bash
 uv sync --no-group docs
 ```
+
+`uv sync` installs the ONNX runtime. Running an exported ONNX file does not
+need PyTorch or Optimum. The heavier recognizer and export stacks are extras:
+
+```bash
+uv sync --extra torch    # PyTorch DistilBERT backend
+uv sync --extra gliner   # zero-shot GLiNER recognizer
+uv sync --extra export   # export a checkpoint to ONNX
+```
+
+`DistilBertRecognizer` defaults to the PyTorch backend, so that constructor
+needs the `torch` extra. Pass `backend="onnx"` to run an exported graph with
+the default install.
 
 If you're coming from `poetry` then you'll notice that the virtual environment
 is actually stored in the project root folder and is by default named as `.venv`.

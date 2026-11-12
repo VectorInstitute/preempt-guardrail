@@ -1,0 +1,9 @@
+[files]
+extend-exclude = ["src/preempt/names_dataset.json"]
+
+[default]
+# Notebook outputs store ANSI codes as `\u001b[...m`, which glues `m` onto the next word.
+extend-ignore-re = ["\\\\u001b\\[[0-9;]*m"]
+# "Mata" is a generated surname in the demo output. "alikes" is the second
+# half of "look-alikes", which the checker splits on the hyphen.
+extend-ignore-words-re = ["(?i)mata", "(?i)alikes"]

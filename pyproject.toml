@@ -1,11 +1,10 @@
 [project]
 name = "preempt-guardrail"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sanitize names, ages, and money in LLM prompts with format-preserving encryption and metric differential privacy."
 readme = "README.md"
 authors = [ {name = "Vector AI Engineering", email = "ai_engineering@vectorinstitute.ai"}]
 license = "Apache-2.0"
-repository = "https://github.com/VectorInstitute/preempt-guardrail"
 requires-python = ">=3.12"
 dependencies = [
     "filelock>=4.2.1", # Pinning version to address filelock advisories fixed in 4.2.1
@@ -17,8 +16,13 @@ dependencies = [
     "pygments>=2.20.0", # Pinning version to address vulnerability CVE-2026-4539
     "requests>=2.33.0", # Pinning version to address vulnerability CVE-2026-25645
     "transformers>=5.18.0",
-    "urllib3==2.8.0",
+    "urllib3>=2.8.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/VectorInstitute/preempt-guardrail"
+Issues = "https://github.com/VectorInstitute/preempt-guardrail/issues"
+Changelog = "https://github.com/VectorInstitute/preempt-guardrail/blob/main/RELEASE_NOTES.md"
 
 [project.optional-dependencies]
 gliner = [
@@ -41,6 +45,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/preempt"]
+exclude = ["src/preempt/*.ipynb"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/preempt", "tests", "README.md", "LICENSE.md", "RELEASE_NOTES.md"]
+exclude = ["src/preempt/*.ipynb"]
 
 [dependency-groups]
 dev = [

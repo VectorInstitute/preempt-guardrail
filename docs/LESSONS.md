@@ -46,6 +46,12 @@ Constraints and history for later sessions. Sources: `README.md`, `pii-bench/rep
 - Extras: `uv sync --extra torch`, `--extra gliner`, `--extra export`.
 - Dev and test dependencies: `uv sync --dev`. Drop a group with `uv sync --no-group docs`.
 - Branch stacks, checked out on that branch: `uv sync --group train`, `--group ner-bench`, or `--group pii-bench`.
+- `[tool.uv]` overrides and `[tool.uv.sources]` are not in published metadata. A `pip install preempt-guardrail` still gets `pycryptodome==3.10.1` from `pyfpe` and PyPI `optimum-onnx` for the `export` extra.
+- Hatchling puts every non-ignored file under `src/preempt` in the wheel, so `names_dataset.json` ships and `*.ipynb` is excluded explicitly. The sdist has an `include` list so plans, benchmarks, and docs stay out. Check with `uv build` and list `dist/`.
+- `uv lock` fails inside the agent sandbox because it clones `optimum-onnx` with git. Run it unsandboxed.
+- The training set, `ai4privacy/pii-masking-200k`, has a custom license, not an open one. Non-profits may use it for free. It prohibits altering Ai4Privacy's work "with the intention to distribute, sell, rent, license, re-license, or sublicense your own derivative". The model stays private until ai4privacy (licensing@ai4privacy.com) or Vector legal confirms that publishing it is allowed. Do not label it Apache-2.0.
+- The run 407944 ONNX files and model card are on Hugging Face as `vector-institute/preempt-distilbert-pii` (private). Load with `DistilBertRecognizer("vector-institute/preempt-distilbert-pii", backend="onnx", onnx_file_name="model.int8.onnx")`. A private repo needs `hf auth login`. The first run, which downloads the files, printed the right spans and then aborted at interpreter exit with `recursive_mutex lock failed` (macOS, `hf-xet` 1.6.0). Cached runs, online or with `HF_HUB_OFFLINE=1`, exit cleanly.
+- Hub smoke test: "Hamid Aziz is 42 and lent Jose Santiago $10,000. Email hamid@example.com." gives `NAME` spans for each first and last name separately, `AGE` 42, and `MONEY` 10,000, but no `EMAIL` span, despite EMAIL F1 0.9997 on the held-out set.
 
 ## Active & Pending Technical Debt
 

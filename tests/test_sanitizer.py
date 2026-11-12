@@ -1,7 +1,7 @@
 """Round-trip tests for ``preempt.sanitizer.Sanitizer``."""
 
 from preempt.contracts import EntitySpan
-from preempt.sanitizer import Sanitizer, generate_key
+from preempt.sanitizer import REDACTED, Sanitizer, generate_key
 
 
 KEY, TWEAK = "EF4359D8D580AA4F7F036D6F04FC6A94", "D8E7920AFA330A73"
@@ -83,14 +83,14 @@ def test_partial_mentions_match_the_full_name() -> None:
 
 
 def test_listed_names_decrypt_with_the_key_alone() -> None:
-    """A fresh Sanitizer with the same key restores names from the fixed lists."""
+    """Key-only mode restores listed names on a fresh Sanitizer with the same key."""
     full = _listed_names(1)[0]
     texts = [f"{full} called."]
     encrypted, _ = Sanitizer(FixedNER([[full]]), KEY, TWEAK).encrypt(texts, entity="Name")
 
     fresh = Sanitizer(None, KEY, TWEAK)
     fake = encrypted[0].removesuffix(" called.")
-    assert fresh.decrypt(encrypted, entity="Name", extracted=[[fake]]) == texts
+    assert fresh.decrypt(encrypted, entity="Name", extracted=[[fake]], key_only=True) == texts
 
 
 def test_unlisted_names_round_trip_without_collisions() -> None:
@@ -137,12 +137,74 @@ def test_age_mldp_is_seeded_and_reversible() -> None:
 
 
 def test_unparsable_values_are_reported() -> None:
-    """Values that can't be encrypted map to None and their text is flagged."""
+    """Values that can't be encrypted are redacted and their text is flagged."""
     sanitizer = Sanitizer(FixedNER([["fifty"]]), KEY, TWEAK)
-    _, invalid = sanitizer.encrypt(["He is fifty."], entity="Age")
+    encrypted, invalid = sanitizer.encrypt(["He is fifty."], entity="Age")
 
     assert invalid == [0]
+    assert encrypted == [f"He is {REDACTED}."]
     assert sanitizer.entity_mapping == [{"fifty": None}]
+
+
+def test_one_bad_value_does_not_leave_the_rest() -> None:
+    """A value that cannot be encrypted does not keep the later ones in plaintext."""
+    texts = ["He is age fifty and she is age 30."]
+    sanitizer = Sanitizer(FixedNER([["fifty", "30"]]), KEY, TWEAK, seed=1)
+    encrypted, invalid = sanitizer.encrypt(texts, entity="Age")
+
+    assert invalid == [0]
+    assert "fifty" not in encrypted[0]
+    assert REDACTED in encrypted[0]
+    fake_age = sanitizer.entity_mapping[0]["30"]
+    assert fake_age is not None
+    assert fake_age in encrypted[0]
+
+
+def test_round_amounts_are_encrypted() -> None:
+    """A round amount of 7 or more digits is encrypted, not left in the text."""
+    texts = ["Fund of $1,000,000 and a fee of $5,000 for Maria."]
+    sanitizer = Sanitizer(FixedNER([["1,000,000", "5,000"]]), KEY, TWEAK)
+    encrypted, invalid = sanitizer.encrypt(texts, entity="Money")
+
+    assert not invalid
+    assert "1,000,000" not in encrypted[0]
+    assert "5,000" not in encrypted[0]
+    restored = sanitizer.decrypt(encrypted, entity="Money")
+    assert restored == ["Fund of $1000000 and a fee of $5000 for Maria."]
+
+
+def test_decrypt_leaves_values_that_were_not_encrypted() -> None:
+    """A missed name, and a name passed to decrypt, stay as written."""
+    kept, missed = _listed_names(2)
+    texts = [f"{kept} and {missed} went."]
+    sanitizer = Sanitizer(FixedNER([[kept]]), KEY, TWEAK)
+    encrypted, _ = sanitizer.encrypt(texts, entity="Name")
+
+    assert missed in encrypted[0]
+    assert sanitizer.decrypt(encrypted, entity="Name", extracted=[[missed]]) == texts
+    fresh = Sanitizer(None, KEY, TWEAK)
+    assert fresh.decrypt(encrypted, entity="Name", extracted=[[missed]]) == encrypted
+
+
+def test_decrypt_leaves_amounts_added_after_encrypt() -> None:
+    """An amount in a later reply is not run through the inverse cipher."""
+    texts = ["It costs 85000 today."]
+    sanitizer = Sanitizer(FixedNER([["85000"]]), KEY, TWEAK)
+    encrypted, _ = sanitizer.encrypt(texts, entity="Money")
+    reply = [encrypted[0] + " Median 1000000."]
+
+    restored = sanitizer.decrypt(reply, entity="Money", extracted=[["1000000"]])
+
+    assert restored[0].startswith("It costs 85000 today.")
+    assert restored[0].endswith("Median 1000000.")
+
+
+def test_key_only_money_skips_amounts_that_were_not_encrypted() -> None:
+    """Key-only money leaves a raw amount in place instead of failing the batch."""
+    texts = ["Fund of 1000000 and fee of 123456."]
+    fresh = Sanitizer(None, KEY, TWEAK)
+
+    assert fresh.decrypt(texts, entity="Money", extracted=[["1000000", "123456"]], key_only=True) == texts
 
 
 def test_generated_keys_differ_and_round_trip() -> None:

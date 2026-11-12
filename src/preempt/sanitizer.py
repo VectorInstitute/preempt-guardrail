@@ -3,11 +3,14 @@
 - Names: a keyed permutation of fixed first- and last-name lists (reversible
   with the key alone), or random names. Words outside the lists get a keyed
   hash pick that only the ``encrypt`` call's saved state can reverse.
-- Money: FPE (reversible) or m-LDP noise.
+- Money: FPE (reversible) or m-LDP noise. FPE appends a non-zero suffix so a
+  round amount does not make FF3 reject the value.
 - Ages: m-LDP noise.
 
-``decrypt`` uses state saved by the last ``encrypt`` call, so call both on the
-same ``Sanitizer`` instance.
+``decrypt`` restores only the surrogates saved by the last ``encrypt`` call on
+this instance. ``key_only=True`` inverts listed names and FPE amounts with the
+key alone. A value that cannot be encrypted is replaced with ``[REDACTED]``;
+the other values in that text are still replaced.
 
 Known limitation: values are matched as plain substrings ("Ann" also hits
 "Anna"), and some decrypt paths restore only the first match. See
@@ -37,8 +40,11 @@ logger = logging.getLogger(__name__)
 # Size of each fixed name list. Raising it needs a names dataset with at least
 # this many first names and this many (distinct) last names.
 ALPHABET_SIZE = 1000
-# FF3 needs at least 6 digits, so small amounts are padded with this prefix.
-MONEY_FPE_PREFIX = "999999"
+# FF3 rejects a numeral whose half becomes all zeros. Appending this keeps the
+# right half of a round amount from starting as zeros. It is stripped on decrypt.
+MONEY_FPE_SUFFIX = "999999"
+# Stands in for a value that could not be encrypted, so the original is not returned.
+REDACTED = "[REDACTED]"
 
 
 def generate_key() -> tuple[str, str]:
@@ -92,8 +98,9 @@ class Sanitizer:
     ) -> tuple[list[str], list[int]]:
         """Replace every detected ``entity`` ("Name", "Money", or "Age") in ``inputs``.
 
-        Returns the sanitized texts and the indexes of texts where a value could
-        not be encrypted.
+        A value that cannot be encrypted is replaced with ``[REDACTED]`` and its
+        row index is returned in the second list. Other values in that row are
+        still replaced.
         """
         extracted = self.ner.extract(inputs, entity_type=entity)[entity]
         if entity == "Name":
@@ -110,11 +117,15 @@ class Sanitizer:
         sanitized, invalid = [], []
         for i, (line, fakes) in enumerate(zip(inputs, self.entity_mapping)):
             replaced = line
+            failed = False
             for original, fake in fakes.items():
                 if fake is None:
-                    invalid.append(i)
-                    break
+                    failed = True
+                    replaced = _nfc(replaced).replace(_nfc(original), REDACTED)
+                    continue
                 replaced = _nfc(replaced).replace(_nfc(original), fake)
+            if failed:
+                invalid.append(i)
             sanitized.append(replaced)
         return sanitized, invalid
 
@@ -125,20 +136,30 @@ class Sanitizer:
         extracted: Optional[list[list[str]]] = None,
         use_mdp: bool = False,  # noqa: ARG002 -- kept for API compatibility; m-LDP is used when not use_fpe
         use_fpe: bool = True,
-        use_cache: bool = False,
+        use_cache: bool = False,  # noqa: ARG002 -- stateful decrypt always uses saved surrogates
+        key_only: bool = False,
     ) -> list[str]:
-        """Restore the original values in texts produced by ``encrypt``.
+        """Restore values that ``encrypt`` replaced.
 
-        Fake values to undo come from ``extracted`` (detected in the sanitized
-        texts; NER is run if omitted), or from the last ``encrypt`` call when
-        ``use_cache`` is True. Ages always use the last ``encrypt`` call.
+        By default only surrogates saved by the last ``encrypt`` call on this
+        instance are restored. A name or amount that was never encrypted is
+        left as it is, including one the recognizer missed and one added later.
+
+        Pass ``key_only=True`` to invert listed names and FPE amounts with the
+        key alone. Targets then come from ``extracted``, or from a fresh
+        recognizer pass when ``extracted`` is omitted. An amount FF3 rejects
+        is left in place. Ages have no key-only inverse; they still use the
+        saved state.
+
+        ``use_cache`` is accepted for existing callers. Stateful decrypt always
+        uses the saved surrogates.
         """
-        if extracted is None:
+        if key_only and extracted is None and entity != "Age":
             extracted = self.ner.extract(inputs, entity_type=entity)[entity]
         if entity == "Name":
-            return self.decrypt_names(inputs, extracted, use_cache=use_cache)
+            return self.decrypt_names(inputs, extracted, key_only=key_only)
         if entity == "Money":
-            return self.decrypt_money(inputs, extracted, use_fpe=use_fpe, use_cache=use_cache)
+            return self.decrypt_money(inputs, extracted, use_fpe=use_fpe, key_only=key_only)
         if entity == "Age":
             return self.decrypt_age(inputs)
         raise ValueError(f"Unknown entity: {entity!r}")
@@ -192,20 +213,26 @@ class Sanitizer:
         return mappings, fallbacks
 
     def decrypt_names(
-        self, inputs: list[str], extracted: Optional[list[list[str]]], use_cache: bool = False
+        self,
+        inputs: list[str],
+        extracted: Optional[list[list[str]]],
+        use_cache: bool = False,  # noqa: ARG002 -- stateful decrypt always uses saved surrogates
+        key_only: bool = False,
     ) -> list[str]:
         """Replace fake names in ``inputs`` with the originals.
 
-        Words from the fixed lists decrypt with the key alone; words that were
-        outside the lists need the state saved by the last ``encrypt`` call.
-        Words that are neither are left as they are.
+        By default only surrogates from the last ``encrypt`` call are undone.
+        ``key_only=True`` inverts every target with the key. Words from the
+        fixed lists need only the key; words that were outside the lists need
+        the state saved by ``encrypt``. Words that are neither are left as
+        they are.
         """
         self._load_name_lists()
         decrypted = []
         for i, line in enumerate(inputs):
             fallback = self.entity_lookup[i] if i < len(self.entity_lookup) else {}
             restored = line
-            for fake in self._decrypt_targets(i, extracted, use_cache):
+            for fake in self._decrypt_targets(i, extracted, key_only):
                 restored = restored.replace(fake, self._decrypt_name(fake, fallback))
             decrypted.append(restored)
         return decrypted
@@ -319,7 +346,7 @@ class Sanitizer:
                 digits = amount.replace(",", "")
                 try:
                     if use_fpe:
-                        fakes[amount] = self.fpe_encrypt(MONEY_FPE_PREFIX + digits)
+                        fakes[amount] = self.fpe_encrypt(digits + MONEY_FPE_SUFFIX)
                     else:
                         value = int(float(digits))
                         fakes[amount] = str(self.m_epsilon(value, *_money_bounds(value), epsilon))
@@ -329,22 +356,38 @@ class Sanitizer:
         return mappings
 
     def decrypt_money(
-        self, inputs: list[str], extracted: Optional[list[list[str]]], use_fpe: bool = True, use_cache: bool = False
+        self,
+        inputs: list[str],
+        extracted: Optional[list[list[str]]],
+        use_fpe: bool = True,
+        use_cache: bool = False,  # noqa: ARG002 -- stateful decrypt always uses saved surrogates
+        key_only: bool = False,
     ) -> list[str]:
-        """Replace fake amounts in ``inputs`` with the originals."""
+        """Replace fake amounts in ``inputs`` with the originals.
+
+        By default only surrogates from the last ``encrypt`` call are undone.
+        ``key_only=True`` inverts FPE amounts with the key and skips a value
+        FF3 rejects, so one amount cannot fail the batch.
+        """
         decrypted = []
         for i, line in enumerate(inputs):
             restored = line
-            fake_to_original = {fake: original for original, fake in self.entity_mapping[i].items()}
-            for fake in self._decrypt_targets(i, extracted, use_cache):
+            mapping = self.entity_mapping[i] if i < len(self.entity_mapping) else {}
+            fake_to_original = {fake: original for original, fake in mapping.items() if fake is not None}
+            for fake in self._decrypt_targets(i, extracted, key_only):
                 if not use_fpe:
-                    restored = _replace_first_word(restored, fake, fake_to_original[fake])
-                elif len(fake) >= len(MONEY_FPE_PREFIX):
-                    original = self.fpe_decrypt(fake)[len(MONEY_FPE_PREFIX) :]
-                    if fake in restored:
-                        restored = restored.replace(fake, original)
-                    else:  # e.g. "1.250" was written as "1,250"
-                        restored = restored.replace(fake.replace(".", ","), original.replace(".", ","))
+                    original = fake_to_original.get(fake)
+                    if original is None:
+                        continue
+                    restored = _replace_first_word(restored, fake, original)
+                    continue
+                original = self._unwrap_money(fake)
+                if original is None:
+                    continue
+                if fake in restored:
+                    restored = restored.replace(fake, original)
+                else:  # e.g. "1.250" was written as "1,250"
+                    restored = restored.replace(fake.replace(".", ","), original.replace(".", ","))
             decrypted.append(restored)
         return decrypted
 
@@ -401,11 +444,39 @@ class Sanitizer:
         sample = self.rng.choice(discretization_size, 1, p=p / p.sum())[0]
         return int(sample * total_range / discretization_size + n_lower)
 
-    def _decrypt_targets(self, i: int, extracted: Optional[list[list[str]]], use_cache: bool) -> list[str]:
-        """Fakes to undo in text ``i``: detected, or saved by ``encrypt``."""
-        if extracted is None or use_cache:
-            return [fake for fake in dict.fromkeys(self.entity_mapping[i].values()) if fake is not None]
-        return extracted[i]
+    def _unwrap_money(self, fake: str) -> Optional[str]:
+        """Return the original digits of an FPE amount.
+
+        ``None`` when ``fake`` is too short to be one of ours, FF3 rejects it,
+        or decrypting it does not end in the suffix this class appends.
+        """
+        if len(_digits_only(fake)) <= len(MONEY_FPE_SUFFIX):
+            return None
+        try:
+            decoded = self.fpe_decrypt(fake)
+        except (ValueError, TypeError):
+            return None
+        if not decoded.endswith(MONEY_FPE_SUFFIX):
+            return None
+        return decoded[: -len(MONEY_FPE_SUFFIX)]
+
+    def _saved_fakes(self, index: int) -> list[str]:
+        """Surrogates saved by ``encrypt`` for text ``index``, in insertion order."""
+        if index >= len(self.entity_mapping):
+            return []
+        return [fake for fake in dict.fromkeys(self.entity_mapping[index].values()) if fake is not None]
+
+    def _decrypt_targets(self, index: int, extracted: Optional[list[list[str]]], key_only: bool) -> list[str]:
+        """Values to undo in text ``index``.
+
+        Stateful decrypt uses the surrogates ``encrypt`` saved. Key-only
+        decrypt uses ``extracted`` and does not require that call.
+        """
+        if not key_only:
+            return self._saved_fakes(index)
+        if extracted is None:
+            return []
+        return list(extracted[index])
 
 
 def _nfc(text: str) -> str:

@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from preempt.contracts import LABELS, EntitySpan
+from preempt.spans import covering_windows, merge_overlapping_spans
 
 
 # The quick-start zero-shot checkpoint. Swap this for a fine-tune later.
@@ -29,6 +30,7 @@ class GlinerRecognizer:
         model_path: str = DEFAULT_MODEL_ID,
         threshold: float = 0.5,
         labels: Mapping[str, str] | None = None,
+        overlap: int = 32,
     ) -> None:
         """Load the model and the label prompts it will score.
 
@@ -41,14 +43,23 @@ class GlinerRecognizer:
         labels : Mapping[str, str] | None
             Pipeline label to prompt text. Defaults to ``LABEL_PROMPTS``.
             Prompt strings must be unique. Returned spans use the keys.
+        overlap : int
+            Words repeated from the previous window when the text is longer
+            than the model's ``max_len``. An entity longer than this can still
+            be split.
 
         Raises
         ------
         ImportError
             The ``gliner`` extra is not installed.
+        ValueError
+            ``overlap`` is negative.
 
         """
+        if overlap < 0:
+            raise ValueError("overlap must be >= 0")
         self.threshold = threshold
+        self.overlap = overlap
         self.labels = _check_labels(LABEL_PROMPTS if labels is None else labels)
         # Imported here so an install without the gliner extra does not need it.
         try:
@@ -60,6 +71,9 @@ class GlinerRecognizer:
 
     def recognize(self, text: str) -> list[EntitySpan]:
         """Return PII spans in ``text``.
+
+        Text longer than the model's ``max_len`` is read in overlapping word
+        windows. GLiNER would otherwise truncate and leave the tail unscanned.
 
         Parameters
         ----------
@@ -75,8 +89,33 @@ class GlinerRecognizer:
         """
         if not text:
             return []
+        windows = self._windows(text)
+        spans: list[EntitySpan] = []
+        for char_start, char_end in windows:
+            spans.extend(self._spans_in_window(text, char_start, char_end))
+        if len(windows) > 1:
+            spans = merge_overlapping_spans(spans)
+        spans.sort(key=lambda span: (span.start, span.end))
+        return spans
+
+    def _windows(self, text: str) -> list[tuple[int, int]]:
+        """Character slices that stay within the model's word limit."""
+        max_words = int(getattr(self.model.config, "max_len", 0) or 0)
+        processor = getattr(self.model, "data_processor", None)
+        splitter = getattr(processor, "words_splitter", None)
+        if max_words < 1 or splitter is None:
+            return [(0, len(text))]
+        words = [(int(start), int(end)) for _token, start, end in splitter(text) if int(start) != int(end)]
+        overlap = min(self.overlap, max_words - 1)
+        return covering_windows(words, size=max_words, overlap=overlap, text_length=len(text))
+
+    def _spans_in_window(self, text: str, char_start: int, char_end: int) -> list[EntitySpan]:
+        """Score one slice and return spans in the coordinates of ``text``."""
+        chunk = text[char_start:char_end]
+        if not chunk:
+            return []
         entities = self.model.predict_entities(
-            text,
+            chunk,
             self.labels,
             flat_ner=True,
             threshold=self.threshold,
@@ -86,8 +125,8 @@ class GlinerRecognizer:
             label = str(entity["label"])
             if label not in self.labels:
                 raise ValueError(f"unknown label: {label}")
-            start = int(entity["start"])
-            end = int(entity["end"])
+            start = int(entity["start"]) + char_start
+            end = int(entity["end"]) + char_start
             if start < 0 or end > len(text) or start >= end:
                 continue
             spans.append(
@@ -100,7 +139,6 @@ class GlinerRecognizer:
                     source="gliner",
                 )
             )
-        spans.sort(key=lambda span: (span.start, span.end))
         return spans
 
 

@@ -61,5 +61,7 @@ The notebook loads `model.onnx`, the full-precision graph, not `model.int8.onnx`
 - Replacement is a plain substring. A short value can match inside a longer word, and some decrypt paths restore only the first match.
 - FPE money drops thousands separators. `$10,000` comes back as `$10000`.
 - Ages, and money when you pass `use_fpe=False`, are noised with m-LDP. Restoring them needs the same `Sanitizer` instance that encrypted them. A new instance with the same key is not enough.
-- Names that are not in the fixed lists also need that saved state. Names from the lists decrypt with the key and tweak alone.
+- Names that are not in the fixed lists also need that saved state. `decrypt` restores only surrogates from the last `encrypt` on that instance. Pass `key_only=True` to invert listed names and FPE amounts with the key alone. Key-only money skips an amount FF3 rejects instead of failing the batch. Ages have no key-only inverse.
+- A value that cannot be encrypted is replaced with `[REDACTED]`. Its row index is still returned. Other values in that text are still replaced.
+- DistilBERT and GLiNER read text longer than the model window in overlapping pieces. An entity longer than the overlap (`stride` tokens for DistilBERT, `overlap` words for GLiNER) can still be split.
 - The sanitizer only replaces `Name`, `Money`, and `Age`. The recognizer can also emit email, phone, address, and id spans, and those are left as they are.

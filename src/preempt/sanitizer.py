@@ -3,8 +3,9 @@
 - Names: a keyed permutation of fixed first- and last-name lists (reversible
   with the key alone), or random names. Words outside the lists get a keyed
   hash pick that only the ``encrypt`` call's saved state can reverse.
-- Money: FPE (reversible) or m-LDP noise. FPE appends a non-zero suffix so a
-  round amount does not make FF3 reject the value.
+- Money: FPE (reversible) or m-LDP noise on a log scale over one fixed range.
+  A ``k``/``M``/``B`` suffix is expanded first ("3.7k" is 3700). FPE appends a
+  non-zero suffix so a round amount does not make FF3 reject the value.
 - Ages: m-LDP noise.
 
 ``decrypt`` restores only the surrogates saved by the last ``encrypt`` call on
@@ -19,11 +20,13 @@ words or numbers only, longest value first, every occurrence, in one pass.
 import hashlib
 import itertools
 import logging
+import math
 import os
 import random
 import re
 import secrets
 import unicodedata
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 import names
@@ -42,6 +45,11 @@ ALPHABET_SIZE = 1000
 # FF3 rejects a numeral whose half becomes all zeros. Appending this keeps the
 # right half of a round amount from starting as zeros. It is stripped on decrypt.
 MONEY_FPE_SUFFIX = "999999"
+# m-LDP money is noised on log10(amount) within this one range for every amount,
+# so the range says nothing about the original. Amounts outside it are clamped.
+MONEY_MIN, MONEY_MAX = 1, 10**9
+_AMOUNT = re.compile(r"\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([kKmMbB])?")
+_AMOUNT_MULTIPLIERS = {"k": 1000, "m": 10**6, "b": 10**9}
 # Stands in for a value that could not be encrypted, so the original is not returned.
 REDACTED = "[REDACTED]"
 
@@ -325,7 +333,9 @@ class Sanitizer:
     ) -> list[dict[str, Optional[str]]]:
         """Map each amount to an FPE-encrypted or m-LDP-noised amount, per text.
 
-        Amounts that can't be parsed map to None.
+        A ``k``/``M``/``B`` suffix is expanded first, and the fake is a plain
+        number ("3.7k" is treated as 3700). Amounts that can't be parsed map
+        to None.
         """
         mappings = []
         for amounts in inputs:
@@ -333,13 +343,17 @@ class Sanitizer:
             for amount in amounts:
                 if amount in fakes:
                     continue
-                digits = amount.replace(",", "")
+                value = _parse_amount(amount)
                 try:
                     if use_fpe:
+                        digits = amount.replace(",", "")
+                        if value is not None and amount.rstrip()[-1].isalpha():
+                            digits = format(value.normalize(), "f")
                         fakes[amount] = self.fpe_encrypt(digits + MONEY_FPE_SUFFIX)
+                    elif value is None or epsilon is None:
+                        fakes[amount] = None
                     else:
-                        value = int(float(digits))
-                        fakes[amount] = str(self.m_epsilon(value, *_money_bounds(value), epsilon))
+                        fakes[amount] = str(self.m_epsilon_money(float(value), epsilon))
                 except (ValueError, TypeError):
                     fakes[amount] = None
             mappings.append(fakes)
@@ -420,9 +434,25 @@ class Sanitizer:
         n_lower, n_upper = int(n_lower), int(n_upper)
         total_range = n_upper - n_lower
         x_scaled = (x - n_lower) * discretization_size / total_range
-        p = np.exp(-np.abs(x_scaled - np.arange(discretization_size)) * epsilon / 2)
-        sample = self.rng.choice(discretization_size, 1, p=p / p.sum())[0]
+        sample = self._sample_bin(x_scaled, epsilon, discretization_size)
         return int(sample * total_range / discretization_size + n_lower)
+
+    def m_epsilon_money(self, amount: float, epsilon: float, discretization_size: int = 100) -> int:
+        """Noise ``amount`` with m-LDP on log10 over [MONEY_MIN, MONEY_MAX].
+
+        The noise is relative to the amount's size, and the range is the same
+        for every amount. Smaller ``epsilon`` means more noise.
+        """
+        lower, upper = math.log10(MONEY_MIN), math.log10(MONEY_MAX)
+        x = math.log10(min(max(amount, MONEY_MIN), MONEY_MAX))
+        x_scaled = (x - lower) * discretization_size / (upper - lower)
+        sample = self._sample_bin(x_scaled, epsilon, discretization_size)
+        return round(10 ** (lower + sample * (upper - lower) / discretization_size))
+
+    def _sample_bin(self, x_scaled: float, epsilon: float, discretization_size: int) -> int:
+        """Sample a bin in ``[0, discretization_size)``, likelier near ``x_scaled``."""
+        p = np.exp(-np.abs(x_scaled - np.arange(discretization_size)) * epsilon / 2)
+        return int(self.rng.choice(discretization_size, 1, p=p / p.sum())[0])
 
     def _unwrap_money(self, fake: str) -> Optional[str]:
         """Return the original digits of an FPE amount.
@@ -473,15 +503,16 @@ def _clean_names(dataset_names: list[str], exclude: set[str]) -> list[str]:
     return list(cleaned)
 
 
-def _money_bounds(amount: int) -> tuple[int, int]:
-    """m-LDP noise range for an amount."""
-    if amount == 1:
-        return 1, 2
-    if amount < 100:
-        return 2, 1000
-    if amount < 1000:
-        return 100, 10000
-    return 1000, 10000
+def _parse_amount(amount: str) -> Optional[Decimal]:
+    """Read "$1,250", "85000.50", "3.7k", or "2M" as a number; None otherwise."""
+    match = _AMOUNT.fullmatch(amount.strip())
+    if match is None:
+        return None
+    try:
+        value = Decimal(match[1].replace(",", ""))
+    except InvalidOperation:
+        return None
+    return value * _AMOUNT_MULTIPLIERS[match[2].lower()] if match[2] else value
 
 
 def _digits_only(value: str) -> str:

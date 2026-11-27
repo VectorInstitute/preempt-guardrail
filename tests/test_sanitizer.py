@@ -1,5 +1,8 @@
 """Round-trip tests for ``preempt.sanitizer.Sanitizer``."""
 
+import pytest
+
+from preempt import sanitizer as sanitizer_module
 from preempt.contracts import EntitySpan
 from preempt.sanitizer import REDACTED, Sanitizer, generate_key
 
@@ -205,6 +208,67 @@ def test_key_only_money_skips_amounts_that_were_not_encrypted() -> None:
     fresh = Sanitizer(None, KEY, TWEAK)
 
     assert fresh.decrypt(texts, entity="Money", extracted=[["1000000", "123456"]], key_only=True) == texts
+
+
+def test_short_name_does_not_match_inside_a_longer_name() -> None:
+    """A lone "Ann" is replaced, but not the "Ann" inside "Anna"."""
+    texts = ["Ann called Anna."]
+    sanitizer = Sanitizer(FixedNER([["Ann"]]), KEY, TWEAK)
+    encrypted, _ = sanitizer.encrypt(texts, entity="Name")
+    fake = sanitizer.entity_mapping[0]["Ann"]
+
+    assert encrypted == [f"{fake} called Anna."]
+    assert sanitizer.decrypt(encrypted, entity="Name") == texts
+
+
+def test_short_amount_does_not_match_inside_a_longer_amount() -> None:
+    """The fake for "1" does not rewrite the "1" in "1,250"."""
+    texts = ["Just 1 dollar, or 1,250."]
+    sanitizer = Sanitizer(FixedNER([["1", "1,250"]]), KEY, TWEAK)
+    encrypted, _ = sanitizer.encrypt(texts, entity="Money")
+    fakes = sanitizer.entity_mapping[0]
+
+    assert encrypted == [f"Just {fakes['1']} dollar, or {fakes['1,250']}."]
+    assert sanitizer.decrypt(encrypted, entity="Money") == ["Just 1 dollar, or 1250."]
+
+
+def test_amount_followed_by_a_unit_is_still_replaced() -> None:
+    """An amount span "12" inside "$12k" is replaced rather than left in plaintext."""
+    sanitizer = Sanitizer(FixedNER([["12"]]), KEY, TWEAK)
+    encrypted, _ = sanitizer.encrypt(["Saved $12k."], entity="Money")
+
+    assert encrypted == [f"Saved ${sanitizer.entity_mapping[0]['12']}k."]
+
+
+@pytest.mark.parametrize(
+    ("entity", "values", "text", "kwargs"),
+    [
+        ("Name", ["Sarah Lopez", "Sarah"], "Sarah Lopez came. Sarah left. Bye Sarah.", {}),
+        ("Money", ["85000"], "Pay 85000 now, then 85000 later.", {}),
+        ("Money", ["1,250"], "Rent 1,250, deposit 1,250.", {"use_fpe": False, "use_mdp": True}),
+        ("Age", ["52"], "He is 52. Yes, 52.", {}),
+    ],
+)
+def test_value_that_appears_twice_is_restored_everywhere(
+    entity: str, values: list[str], text: str, kwargs: dict[str, bool]
+) -> None:
+    """Every occurrence is replaced on encrypt and restored on decrypt."""
+    sanitizer = Sanitizer(FixedNER([values]), KEY, TWEAK, seed=0)
+    encrypted, _ = sanitizer.encrypt([text], entity=entity, **kwargs)
+
+    assert all(value not in encrypted[0] for value in values)
+    assert sanitizer.decrypt(encrypted, entity=entity, **kwargs) == [text]
+
+
+def test_replaced_name_is_not_replaced_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A random fake that contains a later original is left alone in the same pass."""
+    fakes = iter(["John Garcia", "Timothy Hall"])
+    monkeypatch.setattr(sanitizer_module.names, "get_full_name", lambda **_: next(fakes))
+    sanitizer = Sanitizer(FixedNER([["Sarah Lopez", "John"]]), KEY, TWEAK)
+
+    encrypted, _ = sanitizer.encrypt(["Sarah Lopez met John."], entity="Name", use_fpe=False)
+
+    assert encrypted == ["John Garcia met Timothy Hall."]
 
 
 def test_generated_keys_differ_and_round_trip() -> None:

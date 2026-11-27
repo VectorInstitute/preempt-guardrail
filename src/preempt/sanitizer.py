@@ -12,9 +12,8 @@ this instance. ``key_only=True`` inverts listed names and FPE amounts with the
 key alone. A value that cannot be encrypted is replaced with ``[REDACTED]``;
 the other values in that text are still replaced.
 
-Known limitation: values are matched as plain substrings ("Ann" also hits
-"Anna"), and some decrypt paths restore only the first match. See
-https://github.com/VectorInstitute/preempt-guardrail/issues/11.
+Encrypt and decrypt share one matching rule (``_replace_values``): whole
+words or numbers only, longest value first, every occurrence, in one pass.
 """
 
 import hashlib
@@ -116,17 +115,10 @@ class Sanitizer:
 
         sanitized, invalid = [], []
         for i, (line, fakes) in enumerate(zip(inputs, self.entity_mapping)):
-            replaced = line
-            failed = False
-            for original, fake in fakes.items():
-                if fake is None:
-                    failed = True
-                    replaced = _nfc(replaced).replace(_nfc(original), REDACTED)
-                    continue
-                replaced = _nfc(replaced).replace(_nfc(original), fake)
-            if failed:
+            if any(fake is None for fake in fakes.values()):
                 invalid.append(i)
-            sanitized.append(replaced)
+            replacements = {_nfc(original): REDACTED if fake is None else fake for original, fake in fakes.items()}
+            sanitized.append(_replace_values(_nfc(line), replacements))
         return sanitized, invalid
 
     def decrypt(  # noqa: PLR0917
@@ -231,10 +223,8 @@ class Sanitizer:
         decrypted = []
         for i, line in enumerate(inputs):
             fallback = self.entity_lookup[i] if i < len(self.entity_lookup) else {}
-            restored = line
-            for fake in self._decrypt_targets(i, extracted, key_only):
-                restored = restored.replace(fake, self._decrypt_name(fake, fallback))
-            decrypted.append(restored)
+            targets = self._decrypt_targets(i, extracted, key_only)
+            decrypted.append(_replace_values(line, {fake: self._decrypt_name(fake, fallback) for fake in targets}))
         return decrypted
 
     def _decrypt_name(self, fake: str, fallback: dict[str, str]) -> str:
@@ -371,24 +361,21 @@ class Sanitizer:
         """
         decrypted = []
         for i, line in enumerate(inputs):
-            restored = line
             mapping = self.entity_mapping[i] if i < len(self.entity_mapping) else {}
-            fake_to_original = {fake: original for original, fake in mapping.items() if fake is not None}
+            fake_to_original = _invert(mapping)
+            replacements: dict[str, str] = {}
             for fake in self._decrypt_targets(i, extracted, key_only):
                 if not use_fpe:
-                    original = fake_to_original.get(fake)
-                    if original is None:
-                        continue
-                    restored = _replace_first_word(restored, fake, original)
+                    if fake in fake_to_original:
+                        replacements.setdefault(fake, fake_to_original[fake])
                     continue
                 original = self._unwrap_money(fake)
                 if original is None:
                     continue
-                if fake in restored:
-                    restored = restored.replace(fake, original)
-                else:  # e.g. "1.250" was written as "1,250"
-                    restored = restored.replace(fake.replace(".", ","), original.replace(".", ","))
-            decrypted.append(restored)
+                replacements.setdefault(fake, original)
+                # The reply may write "1.250" as "1,250".
+                replacements.setdefault(fake.replace(".", ","), original.replace(".", ","))
+            decrypted.append(_replace_values(line, replacements))
         return decrypted
 
     # --- Age ------------------------------------------------------------------
@@ -413,14 +400,7 @@ class Sanitizer:
 
     def decrypt_age(self, inputs: list[str]) -> list[str]:
         """Restore ages saved by the last ``encrypt`` call."""
-        decrypted = []
-        for line, fakes in zip(inputs, self.entity_mapping):
-            restored = line
-            for original, fake in fakes.items():
-                if fake is not None:
-                    restored = _replace_first_word(restored, fake, original)
-            decrypted.append(restored)
-        return decrypted
+        return [_replace_values(line, _invert(fakes)) for line, fakes in zip(inputs, self.entity_mapping)]
 
     # --- Building blocks ------------------------------------------------------
 
@@ -517,6 +497,37 @@ def _restore_format(digits: str, reference: str) -> str:
     return digits
 
 
-def _replace_first_word(text: str, old: str, new: str) -> str:
-    """Replace the first whole-word occurrence of ``old`` in ``text``."""
-    return re.sub(r"\b" + re.escape(old) + r"\b", new, text, count=1)
+def _invert(mapping: dict[str, Optional[str]]) -> dict[str, str]:
+    """``{fake: original}``. When two originals share a fake, the first one wins."""
+    inverse: dict[str, str] = {}
+    for original, fake in mapping.items():
+        if fake is not None:
+            inverse.setdefault(fake, original)
+    return inverse
+
+
+def _edge_guard(char: str, ahead: bool) -> str:
+    """Lookaround that keeps an edge ``char`` from matching inside a longer token.
+
+    A digit may not touch another digit, or a ``,``/``.`` followed by a digit
+    ("1" inside "1,250"). A letter after a digit is allowed so "12" in "$12k"
+    is still replaced. Any other word character may not touch a word character
+    ("Ann" inside "Anna").
+    """
+    if char.isdigit():
+        return r"(?!\d|[.,]\d)" if ahead else r"(?<!\d)(?<!\d[.,])"
+    if re.match(r"\w", char):
+        return r"(?!\w)" if ahead else r"(?<!\w)"
+    return ""
+
+
+def _replace_values(text: str, replacements: dict[str, str]) -> str:
+    """Replace every whole-token occurrence of each key with its value, in one pass.
+
+    Longer keys are tried first, and replaced text is never matched again.
+    """
+    keys = sorted((k for k in replacements if k), key=len, reverse=True)
+    if not keys:
+        return text
+    pattern = "|".join(_edge_guard(k[0], ahead=False) + re.escape(k) + _edge_guard(k[-1], ahead=True) for k in keys)
+    return re.sub(pattern, lambda m: replacements[m.group(0)], text)

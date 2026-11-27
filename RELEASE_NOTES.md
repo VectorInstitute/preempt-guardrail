@@ -1,5 +1,18 @@
 # Release notes
 
+## Unreleased
+
+### Changed output: one matching rule for encrypt and decrypt
+
+`encrypt` and `decrypt` now find values the same way: whole words or numbers only, longest value first, every occurrence, in one pass. Output differs from 0.1.0 in these cases:
+
+- A value inside a longer word or number is left alone. `Ann` no longer rewrites the `Ann` in `Anna`, and the fake for `1` no longer rewrites the `1` in `1,250`.
+- A fake is never rewritten by a later replacement. With random names, `"Sarah Lopez met John."` used to become `"Timothy Hall Garcia met Timothy Hall."` and now becomes `"John Garcia met Timothy Hall."`.
+- Ages and m-LDP money restore every occurrence on decrypt, not only the first one.
+- An amount followed by letters is still replaced. A span `12` in `$12k` becomes `$<fake>k`.
+
+If two different ages or m-LDP amounts in one text are noised to the same fake, decrypt restores every copy of that fake to the first original. Before this change each copy was restored to the next original in order.
+
 ## 0.1.0
 
 First open-source release of the library. It finds names, ages, and money amounts in a prompt, replaces them, and can put the originals back after the model call.
@@ -58,7 +71,7 @@ The notebook loads `model.onnx`, the full-precision graph, not `model.int8.onnx`
 
 ### Known limitations
 
-- Replacement is a plain substring. A short value can match inside a longer word, and some decrypt paths restore only the first match.
+- Replacement is a plain substring. A short value can match inside a longer word, and some decrypt paths restore only the first match. Fixed in the next release (see Unreleased).
 - FPE money drops thousands separators. `$10,000` comes back as `$10000`.
 - Ages, and money when you pass `use_fpe=False`, are noised with m-LDP. Restoring them needs the same `Sanitizer` instance that encrypted them. A new instance with the same key is not enough.
 - Names that are not in the fixed lists also need that saved state. `decrypt` restores only surrogates from the last `encrypt` on that instance. Pass `key_only=True` to invert listed names and FPE amounts with the key alone. Key-only money skips an amount FF3 rejects instead of failing the batch. Ages have no key-only inverse.

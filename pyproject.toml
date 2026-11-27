@@ -76,7 +76,7 @@ docs = [
     "mkdocstrings-python>=1.10.0",
     "ipykernel>=6.29.5",
     "ipython>=8.31.0",
-    "tornado>=6.6", # Pinning version to address CVE-2026-49854, CVE-2026-115927, CVE-2026-116577, CVE-2026-116578
+    "tornado>=6.6.1", # Pinning version to address CVE-2026-49854, CVE-2026-115927, CVE-2026-116577, CVE-2026-116578, CVE-2026-126347
 ]
 # Branch: feat/training
 train = [

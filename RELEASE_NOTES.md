@@ -13,6 +13,12 @@
 
 If two different ages or m-LDP amounts in one text are noised to the same fake, decrypt restores every copy of that fake to the first original. Before this change each copy was restored to the next original in order.
 
+### Changed output: money noise and suffixed amounts
+
+- m-LDP money (`use_fpe=False`) is noised on a log scale over one fixed range, $1 to $1B, for every amount. Before, every amount of 1000 or more was noised into [1000, 10000], so `$139,000` came out near `$9,800`. Now it stays near its own size: at ε = 1, 90% of draws fall between about $59k and $380k. Larger ε keeps it closer. The range no longer depends on the amount, so it does not reveal the amount's size. The same ε gives different money noise than in 0.1.0.
+- A large amount at a high ε is no longer redacted. Before, `$139,000` at ε = 5 came back as `[REDACTED]`.
+- `k`, `M`, and `B` suffixes are expanded before noise or encryption: `3.7k` is 3700 and `2M` is 2,000,000. Before, m-LDP redacted these amounts and FPE produced values such as `7.0k4296572`. The fake is a plain number. m-LDP decrypt restores `3.7k` as written. FPE decrypt gives `3700`.
+
 ## 0.1.0
 
 First open-source release of the library. It finds names, ages, and money amounts in a prompt, replaces them, and can put the originals back after the model call.

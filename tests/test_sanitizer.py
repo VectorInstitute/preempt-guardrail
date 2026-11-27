@@ -127,6 +127,60 @@ def test_money_mldp_round_trip_keeps_commas() -> None:
     assert sanitizer.decrypt(encrypted, entity="Money", use_fpe=False, use_mdp=True, use_cache=True) == texts
 
 
+@pytest.mark.parametrize("epsilon", [0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0])
+def test_money_mldp_is_not_capped_at_ten_thousand(epsilon: float) -> None:
+    """A large amount is noised near its own size at every epsilon, never redacted."""
+    sanitizer = Sanitizer(None, KEY, TWEAK, seed=0)
+    noised = sorted(sanitizer.m_epsilon_money(139_000, epsilon) for _ in range(200))
+
+    assert 50_000 < noised[100] < 400_000
+    assert all(1 <= x <= 10**9 for x in noised)
+
+
+def test_money_mldp_noise_tightens_with_epsilon() -> None:
+    """Larger epsilon keeps the noised amount closer to the original."""
+    sanitizer = Sanitizer(None, KEY, TWEAK, seed=0)
+
+    def spread(epsilon: float) -> float:
+        noised = sorted(sanitizer.m_epsilon_money(139_000, epsilon) for _ in range(400))
+        return noised[380] / noised[20]
+
+    assert spread(5.0) < spread(1.0) < spread(0.1)
+
+
+def test_money_mldp_expands_suffixes() -> None:
+    """Suffixed amounts are noised as 3700 and 2,000,000 and restored as written."""
+    texts = ["Spent $3.7k of the $2M grant."]
+    sanitizer = Sanitizer(FixedNER([["3.7k", "2M"]]), KEY, TWEAK, seed=0)
+    encrypted, invalid = sanitizer.encrypt(texts, epsilon=5.0, entity="Money", use_fpe=False, use_mdp=True)
+    fakes = sanitizer.entity_mapping[0]
+
+    assert not invalid
+    assert fakes["3.7k"] is not None and 1_000 < int(fakes["3.7k"]) < 15_000
+    assert fakes["2M"] is not None and 500_000 < int(fakes["2M"]) < 8_000_000
+    assert sanitizer.decrypt(encrypted, entity="Money", use_fpe=False) == texts
+
+
+def test_money_fpe_expands_suffixes() -> None:
+    """FPE encrypts "3.7k" as 3700: the fake is plain digits and decrypts to 3700."""
+    texts = ["Spent $3.7k of the $2M grant."]
+    sanitizer = Sanitizer(FixedNER([["3.7k", "2M"]]), KEY, TWEAK)
+    encrypted, invalid = sanitizer.encrypt(texts, entity="Money")
+
+    assert not invalid
+    assert all(fake is not None and fake.isdigit() for fake in sanitizer.entity_mapping[0].values())
+    assert sanitizer.decrypt(encrypted, entity="Money") == ["Spent $3700 of the $2000000 grant."]
+
+
+def test_unparsable_amount_is_redacted_under_mldp() -> None:
+    """An amount m-LDP cannot read is redacted and flagged."""
+    sanitizer = Sanitizer(FixedNER([["fifty"]]), KEY, TWEAK, seed=0)
+    encrypted, invalid = sanitizer.encrypt(["Pay fifty."], entity="Money", use_fpe=False, use_mdp=True)
+
+    assert invalid == [0]
+    assert encrypted == [f"Pay {REDACTED}."]
+
+
 def test_age_mldp_is_seeded_and_reversible() -> None:
     """Noised ages stay in [10, 99], repeat for the same seed, and decrypt back."""
     texts = ["She is 52 and he is 30."]
